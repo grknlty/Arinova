@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Without credentials this is an explicitly labelled **local demo**, with the parent interface enabled and data retained in ignored `.data/store.json`. It is a single-process development store, not shared/cloud storage. The included Dutch language practice is sample content, not imported schoolwork. No external AI API is called, and there are no analytics or trackers.
+With no login or database configuration, this is an explicitly labelled **local demo**, with the parent interface enabled and data retained in ignored `.data/store.json`. It is a single-process development store, not shared/cloud storage. The included Dutch language practice is sample content, not imported schoolwork. No external AI API is called, and there are no analytics or trackers.
 
 ```sh
 npm test
@@ -20,18 +20,20 @@ npm run build
 npm run test:e2e # requires Chromium; set CHROMIUM_PATH if needed
 ```
 
+For database integration tests, run a disposable local PostgreSQL instance and pass `TEST_DATABASE_URL` to `npm test`. The suite verifies saved sets/results, login throttling, and row-level security under anonymous-role grants. `TEST_DATABASE_URL` also enables PostgreSQL in `npm run test:e2e`; use a **separate empty local database** for that browser run. Both runners reject non-local test database URLs. Without `TEST_DATABASE_URL`, unit tests report the PostgreSQL integration test as skipped and browser tests use a temporary local file store.
+
 For production-mode local testing, supply the same variables as Vercel and a PostgreSQL database, then `npm run build && npm start`. No production demo bypass exists.
 
 ## Deploy to Vercel
 
 1. Import the GitHub repository into Vercel with framework **Next.js** and Node.js **24.x**. Repository root is the project root. The checked-in `vercel.json` explicitly selects the Next.js framework, `npm ci`, `npm run build`, and `.next` output, overriding an incorrect `public` output setting. Leave the root directory as `./`; do not configure a static export.
-2. Add a managed PostgreSQL database (for example Neon through Vercel Marketplace). Use its pooled connection string as `DATABASE_URL`; preserve the provider’s TLS verification settings. The app creates `arinova_records` and `arinova_login_limits` on first use. The database user needs table creation permission.
+2. Add a managed PostgreSQL database (for example Supabase or Neon through Vercel Marketplace). The Supabase integration’s `POSTGRES_URL` works automatically, or set a pooled connection string as `DATABASE_URL` (which takes precedence). Both storage and login throttling use that connection; preserve the provider’s TLS verification settings. The app creates `arinova_records` and `arinova_login_limits` on first use. The database user must own the application tables and have table creation permission. Tables are created with row-level security enabled in the same transaction: the owner connection can use them, while Supabase’s anonymous/authenticated API roles have no access policies. Browser code does not use Supabase API keys.
 3. Configure these **server-only** environment variables in Vercel:
-   - `DATABASE_URL`: PostgreSQL connection URL.
+   - `DATABASE_URL` or `POSTGRES_URL`: PostgreSQL connection URL (one is sufficient).
    - `PARENT_PASSWORD`: a strong unique parent password.
    - `LEARNER_PASSWORD`: a separate learner password.
    - `SESSION_SECRET`: at least 32 random characters (`openssl rand -hex 32`).
-   - `IMPORT_API_TOKEN`: a different random token of at least 32 characters for integrations.
+   - `IMPORT_API_TOKEN`: a different random token of at least 32 characters; needed only for API imports.
 4. Deploy. Sign in as Arin to finish the sample practice, then as Parent to verify that the result and confidence appear. This verifies database persistence as well as deployment.
 
 Passwords and keys go in Vercel settings, never Git, browser code, or chat. Parent login can import material and see all attempts; learner login can study and submit attempts. Signed, HttpOnly, SameSite cookies expire after one day. Answer keys are removed from learner set responses and grading happens on the server. This version supports **one family and one learner**. Login attempts are rate-limited in PostgreSQL. Rotate SESSION_SECRET to invalidate existing sessions. The import token authorizes creating sets only.

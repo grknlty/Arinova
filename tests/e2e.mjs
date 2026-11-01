@@ -4,6 +4,15 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
+const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+if (
+  testDatabaseUrl &&
+  !['localhost', '127.0.0.1'].includes(new URL(testDatabaseUrl).hostname)
+) {
+  throw new Error(
+    'Browser tests require a disposable local PostgreSQL database',
+  );
+}
 const directory = await mkdtemp(join(tmpdir(), 'arinova-test-'));
 const url = 'http://127.0.0.1:3100';
 const server = spawn(
@@ -21,6 +30,7 @@ const server = spawn(
       ...process.env,
       ARINOVA_DATA_DIR: directory,
       DATABASE_URL: '',
+      POSTGRES_URL: testDatabaseUrl ?? '',
       PARENT_PASSWORD: 'test-parent-password',
       LEARNER_PASSWORD: 'test-learner-password',
       SESSION_SECRET: 'test-session-secret-not-for-production-123456',
@@ -53,7 +63,9 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(url);
   await page.getByRole('button', { name: 'Ouder', exact: true }).click();
-  await page.getByLabel('Wachtwoord').fill('test-parent-password');
+  await page
+    .getByLabel('Wachtwoord', { exact: true })
+    .fill('test-parent-password');
   await page.getByRole('button', { name: 'Inloggen', exact: true }).click();
   await page
     .getByRole('heading', { name: 'Hoi Arin, klaar voor een ontdekking?' })
@@ -100,7 +112,9 @@ try {
     400,
   );
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-  await page.getByLabel('Password').fill('test-learner-password');
+  await page
+    .getByLabel('Password', { exact: true })
+    .fill('test-learner-password');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page
     .getByRole('heading', { name: 'Hi Arin, ready to discover?' })
@@ -134,7 +148,9 @@ try {
   await page.getByText('Not answered', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await page.getByRole('button', { name: 'Parent', exact: true }).click();
-  await page.getByLabel('Password').fill('test-parent-password');
+  await page
+    .getByLabel('Password', { exact: true })
+    .fill('test-parent-password');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
   await page.getByRole('heading', { name: 'Watch Arin grow' }).waitFor();
