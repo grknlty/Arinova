@@ -1,0 +1,223 @@
+import { chromium } from '@playwright/test';
+import { spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import assert from 'node:assert/strict';
+const directory = await mkdtemp(join(tmpdir(), 'arinova-test-'));
+const url = 'http://127.0.0.1:3100';
+const server = spawn(
+  process.execPath,
+  [
+    'node_modules/next/dist/bin/next',
+    'dev',
+    '--port',
+    '3100',
+    '--hostname',
+    '127.0.0.1',
+  ],
+  {
+    env: {
+      ...process.env,
+      ARINOVA_DATA_DIR: directory,
+      DATABASE_URL: '',
+      PARENT_PASSWORD: 'test-parent-password',
+      LEARNER_PASSWORD: 'test-learner-password',
+      SESSION_SECRET: 'test-session-secret-not-for-production-123456',
+      IMPORT_API_TOKEN: 'test-import-token-not-for-production-123456',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  },
+);
+let logs = '';
+server.stdout.on('data', (b) => (logs += b));
+server.stderr.on('data', (b) => (logs += b));
+let browser;
+try {
+  for (let i = 0; i < 90; i++) {
+    try {
+      if ((await fetch(url)).ok) break;
+    } catch {}
+    if (i === 89) throw new Error('Server did not start');
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  browser = await chromium.launch({
+    executablePath: process.env.CHROMIUM_PATH ?? '/usr/bin/chromium',
+    headless: true,
+    args: ['--no-sandbox'],
+  });
+  const page = await browser.newPage({
+    viewport: { width: 820, height: 1180 },
+  });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(url);
+  await page.getByRole('button', { name: 'Ouder', exact: true }).click();
+  await page.getByLabel('Wachtwoord').fill('test-parent-password');
+  await page.getByRole('button', { name: 'Inloggen', exact: true }).click();
+  await page
+    .getByRole('heading', { name: 'Hoi Arin, klaar voor een ontdekking?' })
+    .waitFor();
+  await page.getByRole('combobox', { name: 'Taal' }).selectOption('tr');
+  await page
+    .getByRole('heading', { name: 'Merhaba Arin, keşfetmeye hazır mısın?' })
+    .waitFor();
+  await page.getByRole('combobox').selectOption('en');
+  await page
+    .getByRole('heading', { name: 'Hi Arin, ready to discover?' })
+    .waitFor();
+  await page.getByRole('button', { name: 'Add material', exact: true }).click();
+  await page.getByLabel('JSON', { exact: true }).fill(
+    JSON.stringify({
+      title: 'Browser workflow test',
+      subject: 'Taal',
+      language: 'en',
+      material: 'A noun names a thing.',
+      questions: [
+        {
+          prompt: 'Which is a noun?',
+          options: ['Book', 'Run'],
+          correctIndex: 0,
+          explanation: 'A book is a thing.',
+        },
+        {
+          prompt: 'What does a verb do?',
+          options: ['Names a colour', 'Describes an action'],
+          correctIndex: 1,
+          explanation: 'A verb describes an action.',
+        },
+      ],
+    }),
+  );
+  await page
+    .getByRole('button', { name: 'Add to learning space', exact: true })
+    .click();
+  await page.getByRole('status').waitFor();
+  assert.equal(
+    (
+      await page.request.post(url + '/api/sets', { data: { title: 'Invalid' } })
+    ).status(),
+    400,
+  );
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page.getByLabel('Password').fill('test-learner-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page
+    .getByRole('heading', { name: 'Hi Arin, ready to discover?' })
+    .waitFor();
+  assert.equal((await page.request.get(url + '/api/progress')).status(), 403);
+  const sets = await (await page.request.get(url + '/api/sets')).json();
+  assert.equal('correctIndex' in sets[0].questions[0], false);
+  const card = page.getByRole('article').filter({
+    has: page.getByRole('heading', { name: 'Browser workflow test' }),
+  });
+  await card.getByRole('button', { name: 'Learn first' }).click();
+  await page.getByText('A noun names a thing.', { exact: true }).waitFor();
+  await page
+    .getByRole('button', { name: 'Start practice', exact: true })
+    .click();
+  assert.equal(
+    await page.getByRole('button', { name: 'Next question' }).isDisabled(),
+    true,
+  );
+  await page.getByRole('button', { name: 'A Book', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'This seems most reasonable' })
+    .click();
+  await page.getByRole('button', { name: 'Next question' }).click();
+  await page
+    .getByRole('button', { name: 'I don’t understand the question' })
+    .click();
+  await page.getByRole('button', { name: 'See my results' }).click();
+  await page.getByRole('heading', { name: 'Well practised!' }).waitFor();
+  await page.getByText('Correct, but still unsure', { exact: true }).waitFor();
+  await page.getByText('Not answered', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page.getByRole('button', { name: 'Parent', exact: true }).click();
+  await page.getByLabel('Password').fill('test-parent-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('heading', { name: 'Watch Arin grow' }).waitFor();
+  const attempts = await (await page.request.get(url + '/api/progress')).json();
+  assert.equal(attempts.length, 1);
+  assert.equal(attempts[0].correct, 1);
+  assert.equal(attempts[0].answers[0].confidence, 'best_guess');
+  assert.equal(attempts[0].answers[1].selected, null);
+  await page.locator('summary').click();
+  await page.getByText('Correct, but still unsure', { exact: true }).waitFor();
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    ),
+    false,
+  );
+  await page
+    .getByRole('button', { name: 'My learning space', exact: true })
+    .click();
+  await page.setViewportSize({ width: 1440, height: 1080 });
+  await page.screenshot({ path: '/tmp/arinova-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: '/tmp/arinova-mobile.png', fullPage: true });
+  assert.equal((await fetch(url + '/api/sets')).status, 401);
+  const payload = JSON.stringify({
+    title: 'API import test',
+    subject: 'Türkçe',
+    language: 'tr',
+    material: 'Merhaba!',
+    questions: [
+      { prompt: 'Bir seçenek seç.', options: ['A', 'B'], correctIndex: 0 },
+    ],
+  });
+  assert.equal(
+    (
+      await fetch(url + '/api/sets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await fetch(url + '/api/sets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-import-token-not-for-production-123456',
+        },
+        body: payload,
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await fetch(url + '/api/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'https://untrusted.example',
+        },
+        body: JSON.stringify({
+          role: 'parent',
+          password: 'test-parent-password',
+        }),
+      })
+    ).status,
+    403,
+  );
+  assert.deepEqual(errors, []);
+  console.log(
+    'PASS: parent import → learner study → confidence/skip → saved result → parent review; NL/TR/EN; mobile overflow; role boundaries.',
+  );
+} catch (e) {
+  console.error(logs);
+  throw e;
+} finally {
+  await browser?.close();
+  server.kill('SIGTERM');
+  await new Promise((r) => server.once('exit', r));
+  await rm(directory, { recursive: true, force: true });
+}
