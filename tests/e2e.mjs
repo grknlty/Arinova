@@ -63,6 +63,45 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(url);
   await page.getByRole('button', { name: 'Ouder', exact: true }).click();
+  let simulatedCode = '';
+  await page.route('**/api/auth', (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        code: simulatedCode,
+        diagnostic:
+          simulatedCode === 'AUTH_DATABASE_UNAVAILABLE'
+            ? 'database_network'
+            : undefined,
+      },
+    }),
+  );
+  for (const [language, code, message] of [
+    [
+      'nl',
+      'AUTH_SESSION_NOT_CONFIGURED',
+      'De sessiesleutel ontbreekt of is te kort.',
+    ],
+    ['en', 'AUTH_DATABASE_UNAVAILABLE', 'The database connection failed.'],
+    [
+      'tr',
+      'AUTH_PASSWORD_NOT_CONFIGURED',
+      'Bu rolün şifresi henüz ayarlanmamış.',
+    ],
+  ]) {
+    simulatedCode = code;
+    await page.getByRole('combobox').selectOption(language);
+    await page.locator('#login-password').fill('test-parent-password');
+    await page.locator('button[type="submit"], form > button.primary').click();
+    await page.getByRole('alert').filter({ hasText: message }).waitFor();
+    if (code === 'AUTH_DATABASE_UNAVAILABLE')
+      await page
+        .getByRole('alert')
+        .filter({ hasText: 'database_network' })
+        .waitFor();
+  }
+  await page.unroute('**/api/auth');
+  await page.getByRole('combobox').selectOption('nl');
   await page
     .getByLabel('Wachtwoord', { exact: true })
     .fill('test-parent-password');

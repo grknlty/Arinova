@@ -53,6 +53,7 @@ export async function database(): Promise<Pool | null> {
   const pool = (runtime.arinovaDatabase ??= new Pool({
     connectionString,
     max: 3,
+    connectionTimeoutMillis: 10000,
   }));
   await (runtime.arinovaSchema ??= initialize(pool).catch((error) => {
     runtime.arinovaSchema = undefined;

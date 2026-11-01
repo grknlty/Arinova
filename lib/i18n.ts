@@ -88,7 +88,19 @@ export const words = {
       'Alle pogingen tellen mee, ook herhaalde oefeningen. Een onbeantwoorde vraag telt niet als fout.',
     skipped: 'Overgeslagen',
     importError: 'Controleer het JSON-bestand en probeer opnieuw.',
-    loginError: 'Inloggen lukt niet. Controleer je wachtwoord.',
+    loginError:
+      'Inloggen lukt niet. Controleer de gekozen rol en het wachtwoord.',
+    loginPasswordSetupError:
+      'Het wachtwoord voor deze rol is nog niet ingesteld. Laat een ouder de website-instellingen controleren en opnieuw publiceren.',
+    loginSessionSetupError:
+      'De sessiesleutel ontbreekt of is te kort. Laat een ouder SESSION_SECRET instellen (minimaal 32 tekens) en opnieuw publiceren.',
+    loginDatabaseError:
+      'De databaseverbinding lukt niet. Laat een ouder de database-instellingen en serverlogboeken controleren.',
+    loginRateError:
+      'Te veel inlogpogingen. Probeer het over 15 minuten opnieuw.',
+    loginRefreshError: 'Ververs deze pagina en probeer opnieuw in te loggen.',
+    loginUnavailableError:
+      'Inloggen is tijdelijk niet beschikbaar. Probeer het opnieuw.',
     contentNote:
       'De taalkeuze verandert de website. De lesstof blijft in de oorspronkelijke taal.',
     noMaterial: 'Voor deze oefening is nog geen leertekst toegevoegd.',
@@ -182,7 +194,17 @@ export const words = {
       'Includes every attempt, including repeated practices. Unanswered questions are counted separately from incorrect answers.',
     skipped: 'Skipped',
     importError: 'Check the JSON file and try again.',
-    loginError: 'Could not sign in. Check your password.',
+    loginError: 'Could not sign in. Check the selected role and password.',
+    loginPasswordSetupError:
+      'The password for this role is not configured yet. Ask a parent to check the website settings and redeploy.',
+    loginSessionSetupError:
+      'The session key is missing or too short. Ask a parent to set SESSION_SECRET (at least 32 characters) and redeploy.',
+    loginDatabaseError:
+      'The database connection failed. Ask a parent to check the database settings and server logs.',
+    loginRateError: 'Too many sign-in attempts. Try again in 15 minutes.',
+    loginRefreshError: 'Refresh this page and try signing in again.',
+    loginUnavailableError:
+      'Sign-in is temporarily unavailable. Please try again.',
     contentNote:
       'Changing language translates the website. Study material stays in its original language.',
     noMaterial: 'No study notes have been added for this practice yet.',
@@ -277,7 +299,18 @@ export const words = {
       'Tekrarlar dahil tüm denemeleri içerir. Cevaplanmayan sorular yanlış cevaplardan ayrı sayılır.',
     skipped: 'Atlandı',
     importError: 'JSON dosyasını kontrol edip tekrar dene.',
-    loginError: 'Giriş yapılamadı. Şifreni kontrol et.',
+    loginError: 'Giriş yapılamadı. Seçilen rolü ve şifreyi kontrol et.',
+    loginPasswordSetupError:
+      'Bu rolün şifresi henüz ayarlanmamış. Bir ebeveynden site ayarlarını kontrol edip yeniden yayımlamasını iste.',
+    loginSessionSetupError:
+      'Oturum anahtarı eksik veya çok kısa. Bir ebeveynden SESSION_SECRET değerini en az 32 karakter olacak şekilde ayarlayıp yeniden yayımlamasını iste.',
+    loginDatabaseError:
+      'Veritabanı bağlantısı kurulamadı. Bir ebeveynden veritabanı ayarlarını ve sunucu günlüklerini kontrol etmesini iste.',
+    loginRateError:
+      'Çok fazla giriş denemesi yapıldı. 15 dakika sonra tekrar dene.',
+    loginRefreshError: 'Sayfayı yenileyip tekrar giriş yapmayı dene.',
+    loginUnavailableError:
+      'Giriş geçici olarak kullanılamıyor. Lütfen tekrar dene.',
     contentNote:
       'Dil seçimi sitenin dilini değiştirir. Ders materyali özgün dilinde kalır.',
     noMaterial: 'Bu alıştırma için henüz çalışma notu eklenmedi.',

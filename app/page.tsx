@@ -23,6 +23,14 @@ import { sample } from '@/lib/sample';
 import type { StudySet, PublicSet, Answer, Attempt } from '@/lib/model';
 type View = 'library' | 'progress' | 'manage' | 'study' | 'quiz' | 'result';
 const feelings = ['sure', 'unsure', 'best_guess', 'not_understood'] as const;
+class ApiError extends Error {
+  constructor(
+    public code: string,
+    public diagnostic?: string,
+  ) {
+    super(code);
+  }
+}
 async function api(url: string, data?: unknown) {
   const r = await fetch(
     url,
@@ -34,7 +42,13 @@ async function api(url: string, data?: unknown) {
           body: JSON.stringify(data),
         },
   );
-  if (!r.ok) throw new Error('Request failed');
+  if (!r.ok) {
+    const payload = await r.json().catch(() => null);
+    throw new ApiError(
+      typeof payload?.code === 'string' ? payload.code : 'REQUEST_FAILED',
+      typeof payload?.diagnostic === 'string' ? payload.diagnostic : undefined,
+    );
+  }
   return r.json();
 }
 export default function Home() {
@@ -125,8 +139,31 @@ export default function Home() {
       setPassword('');
       setShowPassword(false);
       setSession(await api('/api/session'));
-    } catch {
-      setError(t.loginError);
+    } catch (error) {
+      const code = error instanceof ApiError ? error.code : 'REQUEST_FAILED';
+      const messages: Record<string, string> = {
+        AUTH_INVALID_CREDENTIALS: t.loginError,
+        AUTH_PASSWORD_NOT_CONFIGURED: t.loginPasswordSetupError,
+        AUTH_SESSION_NOT_CONFIGURED: t.loginSessionSetupError,
+        AUTH_DATABASE_UNAVAILABLE: t.loginDatabaseError,
+        AUTH_RATE_LIMITED: t.loginRateError,
+        AUTH_ORIGIN_REJECTED: t.loginRefreshError,
+      };
+      const diagnostics = [
+        'database_credentials',
+        'database_permissions',
+        'database_name',
+        'database_network',
+        'database_certificate',
+        'database_connection',
+      ];
+      const detail =
+        error instanceof ApiError &&
+        error.diagnostic &&
+        diagnostics.includes(error.diagnostic)
+          ? ` (${error.diagnostic})`
+          : '';
+      setError((messages[code] ?? t.loginUnavailableError) + detail);
     } finally {
       setBusy(false);
     }
