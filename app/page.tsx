@@ -15,6 +15,8 @@ import {
   Sun,
   Sparkles,
   Printer,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { words, type Language } from '@/lib/i18n';
 import { sample } from '@/lib/sample';
@@ -53,6 +55,7 @@ export default function Home() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loginRole, setLoginRole] = useState('learner');
   const [json, setJson] = useState('');
   const [saved, setSaved] = useState(false);
@@ -120,6 +123,7 @@ export default function Home() {
     try {
       await api('/api/auth', { role: loginRole, password });
       setPassword('');
+      setShowPassword(false);
       setSession(await api('/api/session'));
     } catch {
       setError(t.loginError);
@@ -168,16 +172,34 @@ export default function Home() {
                   </button>
                 ))}
               </div>
-              <label>
+              <label htmlFor="login-password" className="password-label">
                 {t.password}
+              </label>
+              <div className="password-field">
                 <input
-                  type="password"
+                  id="login-password"
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
-              </label>
+                <button
+                  type="button"
+                  className="password-toggle"
+                  aria-label={showPassword ? t.hidePassword : t.showPassword}
+                  aria-pressed={showPassword}
+                  aria-controls="login-password"
+                  title={showPassword ? t.hidePassword : t.showPassword}
+                  onClick={() => setShowPassword((shown) => !shown)}
+                >
+                  {showPassword ? (
+                    <EyeOff size={20} aria-hidden="true" />
+                  ) : (
+                    <Eye size={20} aria-hidden="true" />
+                  )}
+                </button>
+              </div>
               <button className="button primary" disabled={busy}>
                 {t.signin}
                 <ArrowRight size={18} />
@@ -266,6 +288,7 @@ export default function Home() {
                 await fetch('/api/auth', { method: 'DELETE' });
                 setSession({ role: null, demo: false });
                 setLoginRole('learner');
+                setShowPassword(false);
                 setAttempts([]);
                 setSets([]);
                 navigate('library');

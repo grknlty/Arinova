@@ -981,6 +981,34 @@ textarea {
   border-radius: 8px;
   background: #fff;
 }
+.login-card .password-label {
+  margin-bottom: 0;
+}
+.password-field {
+  position: relative;
+  margin: 9px 0 20px;
+}
+.login-card .password-field input {
+  margin-top: 0;
+  min-height: 46px;
+  padding-right: 54px;
+}
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--green);
+}
+.password-toggle:hover {
+  background: var(--light);
+}
 .login-card > .button {
   width: 100%;
 }
