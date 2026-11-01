@@ -24,7 +24,7 @@ For production-mode local testing, supply the same variables as Vercel and a Pos
 
 ## Deploy to Vercel
 
-1. Import the GitHub repository into Vercel with framework **Next.js** and Node.js **24.x**. Repository root is the project root.
+1. Import the GitHub repository into Vercel with framework **Next.js** and Node.js **24.x**. Repository root is the project root. The checked-in `vercel.json` explicitly selects the Next.js framework, `npm ci`, `npm run build`, and `.next` output, overriding an incorrect `public` output setting. Leave the root directory as `./`; do not configure a static export.
 2. Add a managed PostgreSQL database (for example Neon through Vercel Marketplace). Use its pooled connection string as `DATABASE_URL`; preserve the provider’s TLS verification settings. The app creates `arinova_records` and `arinova_login_limits` on first use. The database user needs table creation permission.
 3. Configure these **server-only** environment variables in Vercel:
    - `DATABASE_URL`: PostgreSQL connection URL.
