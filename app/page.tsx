@@ -17,12 +17,17 @@ import {
   Printer,
   Eye,
   EyeOff,
+  CloudSun,
+  Shuffle,
+  RotateCw,
+  Download,
 } from 'lucide-react';
 import { words, type Language } from '@/lib/i18n';
 import { sample } from '@/lib/sample';
 import type { StudySet, PublicSet, Answer, Attempt } from '@/lib/model';
 type View = 'library' | 'progress' | 'manage' | 'study' | 'quiz' | 'result';
 const feelings = ['sure', 'unsure', 'best_guess', 'not_understood'] as const;
+const feelingIcons = [Sun, CloudSun, Shuffle, CircleHelp];
 class ApiError extends Error {
   constructor(
     public code: string,
@@ -321,6 +326,7 @@ export default function Home() {
             <button
               className="icon-button"
               aria-label={t.logout}
+              title={t.logout}
               onClick={async () => {
                 await fetch('/api/auth', { method: 'DELETE' });
                 setSession({ role: null, demo: false });
@@ -342,12 +348,14 @@ export default function Home() {
           <div className="error" role="alert">
             {error}
             <button
+              aria-label={t.reload}
+              title={t.reload}
               onClick={() => {
                 setError('');
                 void load();
               }}
             >
-              ↻
+              <RotateCw size={18} aria-hidden="true" />
             </button>
           </div>
         )}
@@ -371,8 +379,8 @@ export default function Home() {
               <div className="hero-art" aria-hidden="true">
                 <div className="orbit orbit-one" />
                 <div className="orbit orbit-two" />
-                <span className="star star-one">✦</span>
-                <span className="star star-two">✦</span>
+                <Sparkles className="star star-one" />
+                <Sparkles className="star star-two" />
                 <div className="art-book">
                   <BookOpen strokeWidth={1.2} />
                   <span>abc</span>
@@ -419,7 +427,7 @@ export default function Home() {
                             ? 'Çç'
                             : 'Ab'}
                       </span>
-                      <span className="art-spark">✦</span>
+                      <Sparkles className="art-spark" aria-hidden="true" />
                     </div>
                     <div className="card-body">
                       <div className="card-meta">
@@ -460,13 +468,13 @@ export default function Home() {
             <p className="content-note">{t.contentNote}</p>
             <aside className="encouragement">
               <span className="encouragement-icon">
-                <Sparkles />
+                <Sparkles aria-hidden="true" />
               </span>
               <div>
                 <h3>{t.ready}</h3>
                 <p>{t.readyText}</p>
               </div>
-              <span aria-hidden="true">✦</span>
+              <Sparkles className="encouragement-spark" aria-hidden="true" />
             </aside>
           </>
         )}
@@ -539,28 +547,33 @@ export default function Home() {
               </div>
               <fieldset className="feelings">
                 <legend>{t.how}</legend>
-                {feelings.map((f, i) => (
-                  <button
-                    type="button"
-                    key={f}
-                    aria-pressed={
-                      (marked[index] && answers[index].confidence === f) ||
-                      false
-                    }
-                    className={
-                      marked[index] && answers[index].confidence === f
-                        ? 'selected'
-                        : ''
-                    }
-                    onClick={() => {
-                      setMarked((m) => ({ ...m, [index]: true }));
-                      updateAnswer({ confidence: f });
-                    }}
-                  >
-                    <span>{['☀', '◒', '◇', '?'][i]}</span>
-                    {t[f]}
-                  </button>
-                ))}
+                {feelings.map((f, i) => {
+                  const Icon = feelingIcons[i];
+                  return (
+                    <button
+                      type="button"
+                      key={f}
+                      aria-pressed={
+                        (marked[index] && answers[index].confidence === f) ||
+                        false
+                      }
+                      className={
+                        marked[index] && answers[index].confidence === f
+                          ? 'selected'
+                          : ''
+                      }
+                      onClick={() => {
+                        setMarked((m) => ({ ...m, [index]: true }));
+                        updateAnswer({ confidence: f });
+                      }}
+                    >
+                      <span className="feeling-icon">
+                        <Icon size={22} aria-hidden="true" />
+                      </span>
+                      {t[f]}
+                    </button>
+                  );
+                })}
               </fieldset>
               <div className="quiz-bottom">
                 <button
@@ -660,13 +673,14 @@ export default function Home() {
             <h2>{t.confidence}</h2>
             <div className="confidence-grid">
               {feelings.map((feeling, i) => {
+                const Icon = feelingIcons[i];
                 const group = allAnswers.filter(
                   (a) => a.confidence === feeling,
                 );
                 return (
                   <div key={feeling}>
-                    <span className="feeling-symbol">
-                      {['☀', '◒', '◇', '?'][i]}
+                    <span className="feeling-icon">
+                      <Icon size={22} aria-hidden="true" />
                     </span>
                     <span>{t[feeling]}</span>
                     <strong>{group.length}</strong>
@@ -757,7 +771,8 @@ export default function Home() {
                     URL.revokeObjectURL(url);
                   }}
                 >
-                  {t.format} ↓
+                  <Download size={16} aria-hidden="true" />
+                  {t.format}
                 </button>
               </div>
               <label className="json-label">

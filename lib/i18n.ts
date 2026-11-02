@@ -52,6 +52,7 @@ export const words = {
     logout: 'Uitloggen',
     demo: 'Lokale demo · voorbeeldmateriaal · geen echte schoolgegevens',
     error: 'Dat lukte niet. Probeer het opnieuw.',
+    reload: 'Opnieuw laden',
     noAttempts: 'De eerste stap begint met een oefening.',
     noAttemptsText:
       'Zodra Arin een oefening afrondt, zie je hier de resultaten en hoe zeker ze zich voelde.',
@@ -158,6 +159,7 @@ export const words = {
     logout: 'Sign out',
     demo: 'Local demo · sample material · no real school records',
     error: 'That didn’t work. Please try again.',
+    reload: 'Reload',
     noAttempts: 'The first step starts with practice.',
     noAttemptsText:
       'When Arin finishes a practice, her results and confidence will appear here.',
@@ -263,6 +265,7 @@ export const words = {
     logout: 'Çıkış yap',
     demo: 'Yerel demo · örnek materyal · gerçek okul verisi yok',
     error: 'İşlem tamamlanamadı. Tekrar dene.',
+    reload: 'Yeniden yükle',
     noAttempts: 'İlk adım bir alıştırmayla başlar.',
     noAttemptsText:
       'Arin bir alıştırmayı bitirdiğinde sonuçlarını ve kendine ne kadar güvendiğini burada görebilirsin.',
