@@ -1,5 +1,8 @@
 import { Pool, type PoolConfig } from 'pg';
 import { supabaseRootCa } from './supabase-ca';
+import { sample } from './sample';
+import type { Attempt, StudySet } from './model';
+import { insertAttempt, insertSet, schema, seedUsers, tables } from './records';
 
 const runtime = globalThis as unknown as {
   arinovaDatabase?: Pool;
@@ -34,6 +37,8 @@ async function initialize(pool: Pool) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // Serialize first-use setup across concurrent function instances.
+    await client.query('SELECT pg_advisory_xact_lock(4206301)');
     await client.query(`
       CREATE TABLE IF NOT EXISTS public.arinova_records (
         id uuid PRIMARY KEY,
@@ -54,6 +59,37 @@ async function initialize(pool: Pool) {
     `);
     await client.query(
       'ALTER TABLE public.arinova_login_limits ENABLE ROW LEVEL SECURITY',
+    );
+    await client.query(schema);
+    for (const table of tables)
+      await client.query(
+        `ALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY`,
+      );
+    await seedUsers(client);
+    await insertSet(client, sample);
+    // Earlier versions kept sets and attempts as JSON documents; copy them
+    // once into the relational tables and keep the originals, marked as
+    // migrated. Inserts skip ids that already exist.
+    const legacy = await client.query(
+      `SELECT kind, payload FROM public.arinova_records
+       WHERE kind IN ('sets', 'attempts') ORDER BY created_at`,
+    );
+    for (const row of legacy.rows)
+      if (row.kind === 'sets') await insertSet(client, row.payload as StudySet);
+    for (const row of legacy.rows)
+      if (
+        row.kind === 'attempts' &&
+        (
+          await client.query(
+            'SELECT 1 FROM public.arinova_tests WHERE id = $1',
+            [row.payload.setId],
+          )
+        ).rowCount
+      )
+        await insertAttempt(client, row.payload as Attempt, 'learner');
+    await client.query(
+      `UPDATE public.arinova_records SET kind = kind || '_migrated'
+       WHERE kind IN ('sets', 'attempts')`,
     );
     await client.query('COMMIT');
   } catch (error) {

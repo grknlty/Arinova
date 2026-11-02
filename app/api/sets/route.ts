@@ -1,6 +1,7 @@
 import { role, canImport, sameOrigin } from '@/lib/auth';
+import { z } from 'zod';
 import { setSchema, publicSet } from '@/lib/model';
-import { list, add } from '@/lib/store';
+import { list, addSets } from '@/lib/store';
 import { body, unavailable } from '@/lib/http';
 export async function GET() {
   const user = await role();
@@ -17,7 +18,10 @@ export async function POST(req: Request) {
     return new Response(null, { status: 403 });
   let input;
   try {
-    input = setSchema.parse(await body(req));
+    // One set, or several (a Word file can hold more than one test).
+    input = z
+      .union([setSchema, z.array(setSchema).min(1).max(20)])
+      .parse(await body(req));
   } catch {
     return Response.json(
       {
@@ -27,14 +31,21 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const set = {
-    ...input,
+  // Sets are listed newest first; keep a batch in its original order.
+  const now = Date.now();
+  const sets = [input].flat().map((s, i) => ({
+    ...s,
     id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
-  };
+    createdAt: new Date(now - i).toISOString(),
+  }));
   try {
-    await add('sets', set);
-    return Response.json({ id: set.id }, { status: 201 });
+    await addSets(sets);
+    return Response.json(
+      Array.isArray(input)
+        ? { ids: sets.map((s) => s.id) }
+        : { id: sets[0].id },
+      { status: 201 },
+    );
   } catch {
     return unavailable();
   }

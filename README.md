@@ -27,7 +27,7 @@ For production-mode local testing, supply the same variables as Vercel and a Pos
 ## Deploy to Vercel
 
 1. Import the GitHub repository into Vercel with framework **Next.js** and Node.js **24.x**. Repository root is the project root. The checked-in `vercel.json` explicitly selects the Next.js framework, `npm ci`, `npm run build`, and `.next` output, overriding an incorrect `public` output setting. Leave the root directory as `./`; do not configure a static export.
-2. Add a managed PostgreSQL database (for example Supabase or Neon through Vercel Marketplace). The Supabase integration’s `POSTGRES_URL` works automatically, or set a pooled connection string as `DATABASE_URL` (which takes precedence). Both storage and login throttling use that connection; preserve the provider’s TLS verification settings. Supabase hosts (`*.supabase.com`, `*.supabase.co`) are verified against the bundled Supabase Root 2021 CA (`lib/supabase-ca.ts`), since Node does not trust that private CA by default; other providers use the system trust store. The app creates `arinova_records` and `arinova_login_limits` on first use. The database user must own the application tables and have table creation permission. Tables are created with row-level security enabled in the same transaction: the owner connection can use them, while Supabase’s anonymous/authenticated API roles have no access policies. Browser code does not use Supabase API keys.
+2. Add a managed PostgreSQL database (for example Supabase or Neon through Vercel Marketplace). The Supabase integration’s `POSTGRES_URL` works automatically, or set a pooled connection string as `DATABASE_URL` (which takes precedence). Both storage and login throttling use that connection; preserve the provider’s TLS verification settings. Supabase hosts (`*.supabase.com`, `*.supabase.co`) are verified against the bundled Supabase Root 2021 CA (`lib/supabase-ca.ts`), since Node does not trust that private CA by default; other providers use the system trust store. The app creates its tables on first use (see **Database tables** below). The database user must own the application tables and have table creation permission. Tables are created with row-level security enabled in the same transaction: the owner connection can use them, while Supabase’s anonymous/authenticated API roles have no access policies. Browser code does not use Supabase API keys.
 3. Configure these **server-only** environment variables in Vercel:
    - `DATABASE_URL` or `POSTGRES_URL`: PostgreSQL connection URL (one is sufficient).
    - `PARENT_PASSWORD`: a strong unique parent password.
@@ -38,9 +38,42 @@ For production-mode local testing, supply the same variables as Vercel and a Pos
 
 Passwords and keys go in Vercel settings, never Git, browser code, or chat. Parent login can import material and see all attempts; learner login can study and submit attempts. Signed, HttpOnly, SameSite cookies expire after one day. Answer keys are removed from learner set responses and grading happens on the server. This version supports **one family and one learner**. Login attempts are rate-limited in PostgreSQL. Rotate SESSION_SECRET to invalidate existing sessions. The import token authorizes creating sets only.
 
+## Database tables
+
+With PostgreSQL, content and answers are stored relationally:
+
+| Table                           | Columns                                                                                                                   |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `arinova_groups`                | `id`, `name`                                                                                                              |
+| `arinova_subjects`              | `id`, `subject_name`, `group_id`                                                                                          |
+| `arinova_users`                 | `id`, `name`, `user_name`, `role` (`parent`/`learner`), `group_id`                                                        |
+| `arinova_tests`                 | `id`, `subject_id`, `title`, `description`, `material`, `language`, `is_sample`, `created_at`                             |
+| `arinova_questions`             | `id`, `subject_id`, `test_id`, `position`, `question_text`, `explanation`, `answer_count`                                 |
+| `arinova_options`               | `id`, `question_id`, `position`, `option_text`, `is_answer`                                                               |
+| `arinova_attempts`              | `id`, `user_id`, `test_id`, `correct`, `total`, `created_at`                                                              |
+| `arinova_user_question_answers` | `id`, `attempt_id`, `user_id`, `question_id`, `options_id` (null when skipped), `is_correct`, `confidence`, `answered_at` |
+
+A test is one toets; an attempt is one practice session through it. The parent and learner sign-in roles each have a user row, seeded on first use; set `LEARNER_NAME` and `LEARNER_GROUP` to change the defaults (`Arin`, `Groep 7–8`). Sets and attempts saved by earlier versions in `arinova_records` are copied into these tables once and kept there with kind `sets_migrated`/`attempts_migrated`. `arinova_records` still holds the space-friend photos.
+
+Example: questions answered wrong most often.
+
+```sql
+SELECT q.question_text, count(*) FILTER (WHERE NOT a.is_correct) AS wrong, count(*) AS answered
+FROM arinova_user_question_answers a
+JOIN arinova_questions q ON q.id = a.question_id
+JOIN arinova_users u ON u.id = a.user_id AND u.role = 'learner'
+GROUP BY q.id ORDER BY wrong DESC LIMIT 20;
+```
+
 ## Add study material
 
-In the parent’s **Add material** tab, download the example JSON, or upload/paste a JSON study set. A set contains a study text and 1–100 questions. Every question has 2–6 options, a zero-based correctIndex, and an optional explanation. The interface accepts up to 500 KB per upload.
+In the parent’s **Add material** tab, upload a Word test (.docx), download the example JSON, or upload/paste a JSON study set.
+
+### Word tests
+
+A Word file can hold one or more tests. Each test has a title (Title or Heading style), numbered questions (`1. …`) with options on their own lines (`A. …` to `F. …`), and an answer key under a heading starting with **Antwoorden** (or Answers/Cevaplar) with lines like `1. B  Optional explanation`. A question can instead give its answer on a line `Antwoord: B`. Questions may sit in table cells. The subject is taken from the title (for example _Verkeer toets 1_). The file is read on the server (max 4 MB) and shown for checking; nothing is saved until the parent presses save. Questions without an answer are reported by number.
+
+### JSON A set contains a study text and 1–100 questions. Every question has 2–6 options, a zero-based correctIndex, and an optional explanation. The interface accepts up to 500 KB per upload.
 
 ```json
 {
@@ -73,7 +106,8 @@ curl --fail-with-body "$ARINOVA_URL/api/sets" \
   --data-binary @study-set.json
 ```
 
-- `POST /api/sets`: parent cookie or import token; returns `{ "id": "…" }`, status 201.
+- `POST /api/sets`: parent cookie or import token; returns `{ "id": "…" }`, status 201. An array of up to 20 sets is saved in one transaction and returns `{ "ids": […] }`.
+- `POST /api/import`: parent cookie or import token; body is a .docx file. Returns the draft sets without saving them.
 - `GET /api/sets`: signed-in parent/learner; learner response omits answer keys.
 - `POST /api/attempts`: signed-in parent/learner; body `{ "setId": "…", "answers": [{ "option": 0, "confidence": "sure" }] }`. Submit one entry per question, in order. Options are zero-based; `null` is allowed only with `not_understood`.
 - Confidence values: `sure`, `unsure`, `best_guess`, `not_understood`.
@@ -83,6 +117,6 @@ Correctness and confidence are independent: a guessed correct answer remains a l
 
 ## Current scope and next steps
 
-This is a first working version. Screenshots/PDFs from school can be shared in chat to prepare reviewed study-set JSON, then imported. Existing ChatGPT projects cannot be read automatically from this repository. Direct photo/PDF storage, automatic OCR/question generation, free-text answers, multiple learner profiles, content editing/deletion, and spaced repetition are future work. Do not treat the sample as age- or curriculum-specific school material.
+This is a first working version. Screenshots/PDFs from school can be shared in chat to prepare reviewed study-set JSON, then imported. Existing ChatGPT projects cannot be read automatically from this repository. Word tests with images, direct photo/PDF storage, automatic OCR/question generation, free-text answers, multiple learner profiles, content editing/deletion, and spaced repetition are future work. Do not treat the sample as age- or curriculum-specific school material.
 
 A database backup/export policy should be configured with the database provider before retaining important learning history. Production deployment and a real cross-device check require a Vercel project and database credentials; a local build does not establish those capabilities.

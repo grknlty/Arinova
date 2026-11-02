@@ -1,10 +1,10 @@
 import { role, sameOrigin } from '@/lib/auth';
 import { attemptSchema, grade } from '@/lib/model';
-import { list, add } from '@/lib/store';
+import { list, addAttempt } from '@/lib/store';
 import { body, unavailable } from '@/lib/http';
 export async function POST(req: Request) {
-  if (!sameOrigin(req) || !(await role()))
-    return new Response(null, { status: 401 });
+  const user = await role();
+  if (!sameOrigin(req) || !user) return new Response(null, { status: 401 });
   let data;
   try {
     data = attemptSchema.parse(await body(req));
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     } catch (e) {
       return Response.json({ error: (e as Error).message }, { status: 400 });
     }
-    await add('attempts', attempt);
+    await addAttempt(attempt, user);
     return Response.json(attempt, { status: 201 });
   } catch {
     return unavailable();
