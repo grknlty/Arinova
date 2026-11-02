@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canonicalSubject } from './subjects';
 export const confidence = z.enum([
   'sure',
   'unsure',
@@ -7,7 +8,7 @@ export const confidence = z.enum([
 ]);
 export const setSchema = z.object({
   title: z.string().trim().min(1).max(150),
-  subject: z.string().trim().min(1).max(80),
+  subject: z.string().trim().min(1).max(80).transform(canonicalSubject),
   language: z.enum(['nl', 'tr', 'en']),
   description: z.string().max(1000).default(''),
   material: z.string().max(50000).default(''),

@@ -21,13 +21,30 @@ import {
   Shuffle,
   RotateCw,
   Download,
+  Calculator,
+  NotebookPen,
+  MapPinned,
+  Earth,
 } from 'lucide-react';
 import { words, type Language } from '@/lib/i18n';
 import { sample } from '@/lib/sample';
+import {
+  subjects,
+  findSubject,
+  canonicalSubject,
+  subjectLabel,
+} from '@/lib/subjects';
 import type { StudySet, PublicSet, Answer, Attempt } from '@/lib/model';
 type View = 'library' | 'progress' | 'manage' | 'study' | 'quiz' | 'result';
 const feelings = ['sure', 'unsure', 'best_guess', 'not_understood'] as const;
 const feelingIcons = [Sun, CloudSun, Shuffle, CircleHelp];
+const subjectIcons = {
+  taal: BookOpen,
+  rekenen: Calculator,
+  huiswerk: NotebookPen,
+  topografie: MapPinned,
+  aardrijkskunde: Earth,
+};
 class ApiError extends Error {
   constructor(
     public code: string,
@@ -266,6 +283,9 @@ export default function Home() {
       {t.back}
     </button>
   );
+  const visibleSets = sets.filter(
+    (s) => subject === 'all' || canonicalSubject(s.subject) === subject,
+  );
   const allAnswers = attempts.flatMap((a) => a.answers);
   const total = allAnswers.length;
   const correct = allAnswers.filter((a) => a.correct).length;
@@ -402,31 +422,45 @@ export default function Home() {
               <span className="small-note">{t.tagline}</span>
             </div>
             <div className="filters">
-              {['all', ...new Set(sets.map((s) => s.subject))].map((s) => (
+              {[
+                'all',
+                ...new Set([
+                  ...subjects.map((s) => s.name),
+                  ...sets.map((s) => canonicalSubject(s.subject)),
+                ]),
+              ].map((s) => (
                 <button
                   key={s}
+                  aria-pressed={subject === s}
                   className={subject === s ? 'selected' : ''}
                   onClick={() => setSubject(s)}
                 >
-                  {s === 'all' ? t.all : s}
+                  {s === 'all' ? t.all : subjectLabel(s, lang)}
                 </button>
               ))}
             </div>
             <div className="cards">
-              {sets
-                .filter((s) => subject === 'all' || s.subject === subject)
-                .map((s, i) => (
+              {visibleSets.map((s) => {
+                const known = findSubject(s.subject);
+                const Icon = known ? subjectIcons[known.id] : BookOpen;
+                const mark =
+                  known?.id === 'rekenen'
+                    ? '123'
+                    : !known || known.id === 'taal'
+                      ? { nl: 'Aa', tr: 'Çç', en: 'Ab' }[s.language]
+                      : null;
+                return (
                   <article className="study-card" key={s.id}>
-                    <div className={`card-art art-${i % 3}`}>
-                      <span className="subject-label">{s.subject}</span>
-                      <BookOpen size={72} strokeWidth={1} />
-                      <span className="card-art-letter">
-                        {s.language === 'nl'
-                          ? 'Aa'
-                          : s.language === 'tr'
-                            ? 'Çç'
-                            : 'Ab'}
+                    <div className={`card-art art-${known?.id ?? 'other'}`}>
+                      <span className="subject-label">
+                        {subjectLabel(s.subject, lang)}
                       </span>
+                      <Icon size={72} strokeWidth={1} aria-hidden="true" />
+                      {mark && (
+                        <span className="card-art-letter" aria-hidden="true">
+                          {mark}
+                        </span>
+                      )}
                       <Sparkles className="art-spark" aria-hidden="true" />
                     </div>
                     <div className="card-body">
@@ -462,8 +496,11 @@ export default function Home() {
                       </div>
                     </div>
                   </article>
-                ))}
-              {!loading && !sets.length && <p>{t.empty}</p>}
+                );
+              })}
+              {!loading && !visibleSets.length && (
+                <p className="empty">{t.empty}</p>
+              )}
             </div>
             <p className="content-note">{t.contentNote}</p>
             <aside className="encouragement">
@@ -483,7 +520,7 @@ export default function Home() {
             {back}
             <section className="paper">
               <span className="eyebrow">
-                {selected.subject} · {t[selected.language]}
+                {subjectLabel(selected.subject, lang)} · {t[selected.language]}
               </span>
               <h1>{selected.title}</h1>
               <span className="pill">
@@ -529,7 +566,9 @@ export default function Home() {
               />
             </div>
             <section className="paper quiz" key={index}>
-              <span className="eyebrow">{selected.subject}</span>
+              <span className="eyebrow">
+                {subjectLabel(selected.subject, lang)}
+              </span>
               <h1>{selected.questions[index].prompt}</h1>
               <div className="options">
                 {selected.questions[index].options.map((o, i) => (
@@ -730,7 +769,10 @@ export default function Home() {
           <>
             <span className="eyebrow muted">{t.manage}</span>
             <h1>{t.importTitle}</h1>
-            <p className="page-intro">{t.importText}</p>
+            <p className="page-intro">
+              {t.importText} {t.subjectsHint}{' '}
+              {subjects.map((s) => s.name).join(', ')}.
+            </p>
             <section className="paper import">
               <div className="import-actions">
                 <label className="button secondary">

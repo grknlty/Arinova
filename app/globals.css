@@ -452,13 +452,25 @@ button:active:not(:disabled) {
 .card-art svg {
   transform: rotate(-12deg);
 }
-.art-1 {
+.art-rekenen {
   background: #e6ecec;
-  color: #91a6a6;
+  color: #7f9a9a;
 }
-.art-2 {
+.art-huiswerk {
   background: #ede5e7;
-  color: #b29da3;
+  color: #a68b93;
+}
+.art-topografie {
+  background: #e8eddc;
+  color: #869868;
+}
+.art-aardrijkskunde {
+  background: #e3e9f0;
+  color: #7c93ab;
+}
+.cards > .empty {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 .subject-label {
   position: absolute;

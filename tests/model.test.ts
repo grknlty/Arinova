@@ -57,3 +57,13 @@ test('import validates correct indices, sizes and supported content languages', 
     false,
   );
 });
+
+test('import maps subject shorthands to the fixed school subjects', () => {
+  const subjectOf = (subject: string) =>
+    setSchema.parse({ ...sample, subject }).subject;
+  assert.equal(subjectOf('topo'), 'Topografie');
+  assert.equal(subjectOf(' REKENEN '), 'Rekenen');
+  assert.equal(subjectOf('ardkunde'), 'Aardrijkskunde');
+  assert.equal(subjectOf('Huiswerk'), 'Huiswerk');
+  assert.equal(subjectOf('Muziek'), 'Muziek');
+});
