@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { database } from '../lib/database';
-import { add, list } from '../lib/store';
+import { addAttempt, addSets, list } from '../lib/store';
+import { tables } from '../lib/records';
 import { allowLogin } from '../lib/rate-limit';
 import { grade } from '../lib/model';
 import { sample } from '../lib/sample';
@@ -25,22 +26,25 @@ test(
         'creates owner-accessible tables with RLS enabled',
         async () => {
           const result = await db.query(
-            "SELECT relname, relrowsecurity FROM pg_class WHERE oid IN ('public.arinova_records'::regclass, 'public.arinova_login_limits'::regclass)",
+            "SELECT relname, relrowsecurity FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname = ANY($1)",
+            [['arinova_records', 'arinova_login_limits', ...tables]],
           );
-          assert.equal(result.rows.length, 2);
+          assert.equal(result.rows.length, tables.length + 2);
           assert.ok(result.rows.every((row) => row.relrowsecurity));
         },
       );
       await t.test(
         'persists imported content and scored attempts via POSTGRES_URL',
         async () => {
+          const { sample: _, ...content } = sample;
+          void _;
           const set = {
-            ...sample,
+            ...content,
             id: crypto.randomUUID(),
-            sample: false,
+            createdAt: new Date().toISOString(),
             title: 'PostgreSQL integration fixture',
           };
-          await add('sets', set);
+          await addSets([set]);
           const stored = (await list('sets')).find((s) => s.id === set.id);
           assert.deepEqual(stored, set);
           const attempt = grade(set, [
@@ -48,11 +52,36 @@ test(
             { option: 0, confidence: 'sure' },
             { option: null, confidence: 'not_understood' },
           ]);
-          await add('attempts', attempt);
+          await addAttempt(attempt, 'learner');
           assert.deepEqual(
             (await list('attempts')).find((a) => a.id === attempt.id),
             attempt,
           );
+          // Each answer is a row pointing at its question and chosen option.
+          const rows = await db.query(
+            `SELECT u.role, q.position, o.option_text, x.is_correct, x.confidence
+             FROM public.arinova_user_question_answers x
+             JOIN public.arinova_users u ON u.id = x.user_id
+             JOIN public.arinova_questions q ON q.id = x.question_id
+             LEFT JOIN public.arinova_options o ON o.id = x.options_id
+             WHERE x.attempt_id = $1 ORDER BY q.position`,
+            [attempt.id],
+          );
+          assert.deepEqual(
+            rows.rows.map((r) => [
+              r.role,
+              r.position,
+              r.is_correct,
+              r.confidence,
+            ]),
+            [
+              ['learner', 0, true, 'best_guess'],
+              ['learner', 1, false, 'sure'],
+              ['learner', 2, false, 'not_understood'],
+            ],
+          );
+          assert.equal(rows.rows[2].option_text, null);
+          assert.ok((await list('sets')).some((s) => s.id === sample.id));
         },
       );
       await t.test(
@@ -78,12 +107,16 @@ test(
           await db.query('CREATE ROLE arinova_test_anon NOLOGIN');
           await db.query('GRANT USAGE ON SCHEMA public TO arinova_test_anon');
           await db.query(
-            'GRANT ALL ON public.arinova_records, public.arinova_login_limits TO arinova_test_anon',
+            `GRANT ALL ON ${['arinova_records', 'arinova_login_limits', ...tables].map((t) => `public.${t}`).join(', ')} TO arinova_test_anon`,
           );
           const client = await db.connect();
           try {
             await client.query('SET ROLE arinova_test_anon');
-            for (const table of ['arinova_records', 'arinova_login_limits']) {
+            for (const table of [
+              'arinova_records',
+              'arinova_login_limits',
+              ...tables.toReversed(),
+            ]) {
               assert.equal(
                 (await client.query(`SELECT * FROM public.${table}`)).rowCount,
                 0,

@@ -2,12 +2,10 @@
 import { useEffect, useState } from 'react';
 import {
   BookOpen,
-  Sprout,
   ArrowRight,
   ArrowLeft,
   Check,
   CircleHelp,
-  Compass,
   BarChart3,
   Plus,
   LogOut,
@@ -25,6 +23,11 @@ import {
   NotebookPen,
   MapPinned,
   Earth,
+  Sparkle,
+  Star,
+  Rocket,
+  Telescope,
+  TrafficCone,
 } from 'lucide-react';
 import { words, type Language } from '@/lib/i18n';
 import { sample } from '@/lib/sample';
@@ -35,15 +38,40 @@ import {
   subjectLabel,
 } from '@/lib/subjects';
 import type { StudySet, PublicSet, Answer, Attempt } from '@/lib/model';
-type View = 'library' | 'progress' | 'manage' | 'study' | 'quiz' | 'result';
+import {
+  ArinAstronaut,
+  GalaxyCanvas,
+  MiaShip,
+  NecoAstronaut,
+  PisoShip,
+  SkyEffects,
+} from './space-art';
+import { FaceEditor } from './face-editor';
+import type { Faces } from '@/lib/faces';
+type View =
+  'library' | 'subject' | 'progress' | 'manage' | 'study' | 'quiz' | 'result';
 const feelings = ['sure', 'unsure', 'best_guess', 'not_understood'] as const;
 const feelingIcons = [Sun, CloudSun, Shuffle, CircleHelp];
+// Where each subject planet sits around the supernova: orbit radius (px)
+// and angle (degrees, clockwise from the right). All planets turn together,
+// so these gaps never change; the angles were chosen so no planet or label
+// ever overlaps another at desktop or phone size. Angles between 0 and 180
+// are nearer to us and drawn larger.
+const orbits = {
+  taal: [162, 0],
+  rekenen: [186, 220],
+  huiswerk: [80, 284],
+  topografie: [108, 158],
+  aardrijkskunde: [136, 70],
+  verkeer: [176, 290],
+} as const;
 const subjectIcons = {
   taal: BookOpen,
   rekenen: Calculator,
   huiswerk: NotebookPen,
   topografie: MapPinned,
   aardrijkskunde: Earth,
+  verkeer: TrafficCone,
 };
 class ApiError extends Error {
   constructor(
@@ -71,7 +99,7 @@ async function api(url: string, data?: unknown) {
       typeof payload?.diagnostic === 'string' ? payload.diagnostic : undefined,
     );
   }
-  return r.json();
+  return r.status === 204 ? null : r.json();
 }
 export default function Home() {
   const [lang, setLang] = useState<Language>('nl');
@@ -83,6 +111,7 @@ export default function Home() {
   const [view, setView] = useState<View>('library');
   const [sets, setSets] = useState<(StudySet | PublicSet)[]>([]);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [faces, setFaces] = useState<Faces>({});
   const [selected, setSelected] = useState<StudySet | PublicSet | null>(null);
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [index, setIndex] = useState(0);
@@ -112,6 +141,8 @@ export default function Home() {
     try {
       setSets(await api('/api/sets'));
       if (session?.role === 'parent') setAttempts(await api('/api/progress'));
+      // Faces are a nice extra: the drawings stay if they cannot be loaded.
+      setFaces(await api('/api/faces').catch(() => ({})));
     } catch {
       setError(t.error);
     } finally {
@@ -126,6 +157,10 @@ export default function Home() {
     setError('');
     setSaved(false);
     window.scrollTo(0, 0);
+  }
+  function pickSubject(s: string) {
+    setSubject(s);
+    navigate('subject');
   }
   function start(s: StudySet | PublicSet) {
     setSelected(s);
@@ -211,7 +246,7 @@ export default function Home() {
         <form className="login-card" onSubmit={login}>
           <div className="brand">
             <span className="brand-icon">
-              <Sprout />
+              <Sparkle fill="currentColor" />
             </span>
             arinova<span className="brand-dot">.</span>
           </div>
@@ -266,7 +301,7 @@ export default function Home() {
             </>
           ) : (
             <div className="loading">
-              <Sprout />
+              <Sparkle aria-hidden="true" />
             </div>
           )}
           {error && (
@@ -277,16 +312,70 @@ export default function Home() {
         </form>
       </main>
     );
+  // From a practice, go back to the subject it was opened from.
   const back = (
-    <button className="back" onClick={() => navigate('library')}>
+    <button className="back" onClick={() => navigate('subject')}>
       <ArrowLeft size={16} />
-      {t.back}
+      {subject === 'all' ? t.all : subjectLabel(subject, lang)}
     </button>
   );
+  const subjectInfo = findSubject(subject);
+  const SubjectIcon = subjectInfo ? subjectIcons[subjectInfo.id] : Sparkle;
   const visibleSets = sets.filter(
     (s) => subject === 'all' || canonicalSubject(s.subject) === subject,
   );
   const allAnswers = attempts.flatMap((a) => a.answers);
+  // Questions answered wrong at least once, most often wrong first.
+  const missed = Object.values(
+    [...attempts]
+      .reverse()
+      .flatMap((a) =>
+        a.answers.map((x, i) => ({
+          ...x,
+          key: `${a.setId}:${i}`,
+          title: a.title,
+        })),
+      )
+      .reduce<
+        Record<
+          string,
+          {
+            prompt: string;
+            title: string;
+            correctAnswer: string;
+            wrong: number;
+            total: number;
+            last: string | null;
+          }
+        >
+      >((all, x) => {
+        const m = (all[x.key] ??= {
+          prompt: x.prompt,
+          title: x.title,
+          correctAnswer: x.correctAnswer,
+          wrong: 0,
+          total: 0,
+          last: null,
+        });
+        m.total++;
+        if (!x.correct) {
+          m.wrong++;
+          m.last = x.selected;
+        }
+        return all;
+      }, {}),
+  )
+    .filter((m) => m.wrong)
+    .sort((a, b) => b.wrong - a.wrong || b.wrong / b.total - a.wrong / a.total)
+    .slice(0, 15);
+  const preview: { title?: string; subject?: string; questions?: unknown[] }[] =
+    (() => {
+      try {
+        return [JSON.parse(json)].flat().filter((p) => p?.title);
+      } catch {
+        return [];
+      }
+    })();
   const total = allAnswers.length;
   const correct = allAnswers.filter((a) => a.correct).length;
   const wrong = allAnswers.filter(
@@ -304,14 +393,14 @@ export default function Home() {
           aria-label="Arinova"
         >
           <span className="brand-icon">
-            <Sprout />
+            <Sparkle fill="currentColor" />
           </span>
           arinova<span className="brand-dot">.</span>
         </button>
         <nav aria-label={t.library}>
           <button
             className={
-              ['library', 'study', 'quiz', 'result'].includes(view)
+              ['library', 'subject', 'study', 'quiz', 'result'].includes(view)
                 ? 'active'
                 : ''
             }
@@ -353,6 +442,7 @@ export default function Home() {
                 setLoginRole('learner');
                 setShowPassword(false);
                 setAttempts([]);
+                setFaces({});
                 setSets([]);
                 navigate('library');
               }}
@@ -363,7 +453,7 @@ export default function Home() {
         </div>
       </header>
       {session.demo && <div className="demo-banner">{t.demo}</div>}
-      <main className="main">
+      <main className={view === 'library' ? 'main main-home' : 'main'}>
         {error && (
           <div className="error" role="alert">
             {error}
@@ -381,63 +471,87 @@ export default function Home() {
         )}
         {view === 'library' && (
           <>
-            <section className="hero">
-              <div className="hero-copy">
-                <span className="eyebrow">
-                  <span className="tiny-dot" />
-                  {t.eyebrow}
-                </span>
-                <h1>{t.welcome}</h1>
-                <p>{t.intro}</p>
-                <div className="hero-foot">
-                  <span className="sun-badge">
-                    <Sun size={18} />
-                  </span>
-                  {t.tip}
-                </div>
-              </div>
-              <div className="hero-art" aria-hidden="true">
-                <div className="orbit orbit-one" />
-                <div className="orbit orbit-two" />
-                <Sparkles className="star star-one" />
-                <Sparkles className="star star-two" />
-                <div className="art-book">
-                  <BookOpen strokeWidth={1.2} />
-                  <span>abc</span>
-                </div>
-                <div className="art-sprout">
-                  <Sprout />
-                </div>
-                <span className="art-label">{t.tagline}</span>
+            <section className="space-home">
+              <h1 className="sr-only">{t.welcome}</h1>
+              <GalaxyCanvas />
+              <SkyEffects />
+              <MiaShip photo={faces.mia} />
+              <ArinAstronaut photo={faces.arin} />
+              <NecoAstronaut photo={faces.neco} />
+              <PisoShip photo={faces.piso} />
+              <div className="system" role="group" aria-label={t.all}>
+                {Object.values(orbits).map(([r]) => (
+                  <span
+                    key={r}
+                    className="orbit"
+                    style={{ '--r': `${r}px` } as React.CSSProperties}
+                    aria-hidden="true"
+                  />
+                ))}
+                {[58, 68, 94, 100, 122, 128, 149, 174, 198, 210].map((r) => (
+                  <span
+                    key={r}
+                    className="orbit fine"
+                    style={{ '--r': `${r}px` } as React.CSSProperties}
+                    aria-hidden="true"
+                  />
+                ))}
+                <span className="nova-ring" aria-hidden="true" />
+                <button
+                  className={`nova ${subject === 'all' ? 'selected' : ''}`}
+                  aria-pressed={subject === 'all'}
+                  aria-label={t.all}
+                  onClick={() => pickSubject('all')}
+                >
+                  <span className="nova-rays" aria-hidden="true" />
+                  <span className="nova-glow" aria-hidden="true" />
+                  <span className="nova-core" aria-hidden="true" />
+                </button>
+                {subjects.map((s, i) => {
+                  const Icon = subjectIcons[s.id];
+                  const [r, a] = orbits[s.id];
+                  return (
+                    <button
+                      key={s.id}
+                      className={`orbit-planet art-${s.id} ${subject === s.name ? 'selected' : ''}`}
+                      style={
+                        {
+                          '--r': `${r}px`,
+                          '--a0': `${a}deg`,
+                          '--n': i,
+                        } as React.CSSProperties
+                      }
+                      aria-pressed={subject === s.name}
+                      aria-label={subjectLabel(s.name, lang)}
+                      onClick={() => pickSubject(s.name)}
+                    >
+                      <span className="planet" aria-hidden="true">
+                        <Icon size={22} strokeWidth={2} />
+                      </span>
+                      <span className="planet-name">
+                        {subjectLabel(s.name, lang)}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </section>
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow muted">{t.learning}</span>
-                <h2>
-                  {t.library}
-                  <span className="count">{sets.length}</span>
-                </h2>
-              </div>
-              <span className="small-note">{t.tagline}</span>
-            </div>
-            <div className="filters">
-              {[
-                'all',
-                ...new Set([
-                  ...subjects.map((s) => s.name),
-                  ...sets.map((s) => canonicalSubject(s.subject)),
-                ]),
-              ].map((s) => (
-                <button
-                  key={s}
-                  aria-pressed={subject === s}
-                  className={subject === s ? 'selected' : ''}
-                  onClick={() => setSubject(s)}
-                >
-                  {s === 'all' ? t.all : subjectLabel(s, lang)}
-                </button>
-              ))}
+          </>
+        )}
+        {view === 'subject' && (
+          <>
+            <button className="back" onClick={() => navigate('library')}>
+              <ArrowLeft size={16} />
+              {t.back}
+            </button>
+            <div
+              className={`subject-heading art-${subject === 'all' ? 'all' : (subjectInfo?.id ?? 'other')}`}
+            >
+              <span className="planet" aria-hidden="true">
+                <SubjectIcon size={30} strokeWidth={2} />
+              </span>
+              <h1>{subject === 'all' ? t.all : subjectLabel(subject, lang)}</h1>
+              <span className="count">{visibleSets.length}</span>
             </div>
             <div className="cards">
               {visibleSets.map((s) => {
@@ -455,7 +569,9 @@ export default function Home() {
                       <span className="subject-label">
                         {subjectLabel(s.subject, lang)}
                       </span>
-                      <Icon size={72} strokeWidth={1} aria-hidden="true" />
+                      <span className="planet" aria-hidden="true">
+                        <Icon size={40} strokeWidth={1.75} />
+                      </span>
                       {mark && (
                         <span className="card-art-letter" aria-hidden="true">
                           {mark}
@@ -477,15 +593,17 @@ export default function Home() {
                         <span className="sample-label">{t.sample}</span>
                       )}
                       <div className="card-actions">
-                        <button
-                          className="button secondary"
-                          onClick={() => {
-                            setSelected(s);
-                            navigate('study');
-                          }}
-                        >
-                          {t.study}
-                        </button>
+                        {s.material.trim() && (
+                          <button
+                            className="button secondary"
+                            onClick={() => {
+                              setSelected(s);
+                              navigate('study');
+                            }}
+                          >
+                            {t.study}
+                          </button>
+                        )}
                         <button
                           className="button primary"
                           onClick={() => start(s)}
@@ -503,16 +621,6 @@ export default function Home() {
               )}
             </div>
             <p className="content-note">{t.contentNote}</p>
-            <aside className="encouragement">
-              <span className="encouragement-icon">
-                <Sparkles aria-hidden="true" />
-              </span>
-              <div>
-                <h3>{t.ready}</h3>
-                <p>{t.readyText}</p>
-              </div>
-              <Sparkles className="encouragement-spark" aria-hidden="true" />
-            </aside>
           </>
         )}
         {view === 'study' && selected && (
@@ -558,10 +666,19 @@ export default function Home() {
                 {t.question} {index + 1} {t.of} {selected.questions.length}
               </strong>
             </div>
-            <div className="progress-track">
-              <span
+            <div className="progress">
+              <div className="progress-track">
+                <span
+                  style={{
+                    width: `${((index + 1) / selected.questions.length) * 100}%`,
+                  }}
+                />
+              </div>
+              <Rocket
+                className="progress-rocket"
+                aria-hidden="true"
                 style={{
-                  width: `${((index + 1) / selected.questions.length) * 100}%`,
+                  left: `${((index + 1) / selected.questions.length) * 100}%`,
                 }}
               />
             </div>
@@ -651,8 +768,13 @@ export default function Home() {
           <>
             {back}
             <section className="result-hero">
+              <div className="burst" aria-hidden="true">
+                {Array.from({ length: 12 }, (_, i) => (
+                  <span key={i} style={{ '--i': i } as React.CSSProperties} />
+                ))}
+              </div>
               <span className="result-icon">
-                <Sprout size={42} />
+                <Star size={44} fill="currentColor" aria-hidden="true" />
               </span>
               <h1>{t.result}</h1>
               <p>{t.resultText}</p>
@@ -731,6 +853,30 @@ export default function Home() {
                 );
               })}
             </div>
+            <h2>{t.missed}</h2>
+            {missed.length ? (
+              <div className="missed">
+                {missed.map((m, i) => (
+                  <article className="review-card" key={i}>
+                    <div className="review-heading">
+                      <span className="pill bad">
+                        {m.wrong}/{m.total} {t.wrong.toLowerCase()}
+                      </span>
+                      <span className="confidence-label">{m.title}</span>
+                    </div>
+                    <h3>{m.prompt}</h3>
+                    <p>
+                      {t.lastWrong}: <strong>{m.last ?? t.skipped}</strong>
+                    </p>
+                    <p>
+                      {t.rightAnswer}: <strong>{m.correctAnswer}</strong>
+                    </p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="content-note">{t.noMissed}</p>
+            )}
             <h2>{t.recent}</h2>
             {attempts.length ? (
               attempts.map((a) => (
@@ -758,7 +904,7 @@ export default function Home() {
               ))
             ) : (
               <div className="empty">
-                <Compass size={40} />
+                <Telescope size={40} aria-hidden="true" />
                 <h3>{t.noAttempts}</h3>
                 <p>{t.noAttemptsText}</p>
               </div>
@@ -780,17 +926,36 @@ export default function Home() {
                   {t.upload}
                   <input
                     type="file"
-                    accept="application/json,.json"
+                    accept="application/json,.json,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     className="sr-only"
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
+                      e.target.value = '';
                       if (!file) return;
-                      if (file.size > 500000) {
-                        setError(t.importError);
+                      setError('');
+                      setSaved(false);
+                      if (!/\.docx$/i.test(file.name)) {
+                        if (file.size > 500000) setError(t.importError);
+                        else setJson(await file.text());
                         return;
                       }
-                      setJson(await file.text());
-                      setSaved(false);
+                      // Word files are read on the server into draft sets
+                      // that show up below for checking before saving.
+                      setBusy(true);
+                      try {
+                        const r = await fetch('/api/import', {
+                          method: 'POST',
+                          body: file,
+                        });
+                        const payload = await r.json().catch(() => null);
+                        if (!r.ok)
+                          setError(`${t.docxError} ${payload?.error ?? ''}`);
+                        else setJson(JSON.stringify(payload, null, 2));
+                      } catch {
+                        setError(t.docxError);
+                      } finally {
+                        setBusy(false);
+                      }
                     }}
                   />
                 </label>
@@ -817,6 +982,28 @@ export default function Home() {
                   {t.format}
                 </button>
               </div>
+              {preview.length > 0 && (
+                <div className="import-preview">
+                  <p>{t.checkImport}</p>
+                  <ul>
+                    {preview.map((p, i) => (
+                      <li key={i}>
+                        <strong>{p.title}</strong>
+                        <span
+                          className={findSubject(p.subject ?? '') ? '' : 'bad'}
+                        >
+                          {findSubject(p.subject ?? '')
+                            ? subjectLabel(p.subject!, lang)
+                            : t.noSubject}
+                        </span>
+                        <span>
+                          {p.questions?.length ?? 0} {t.questions}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <label className="json-label">
                 JSON
                 <textarea
@@ -860,12 +1047,30 @@ export default function Home() {
                 </p>
               )}
             </section>
+            <FaceEditor
+              faces={faces}
+              t={t}
+              onSave={async (name, image) => {
+                setError('');
+                try {
+                  await api('/api/faces', { name, image });
+                  setFaces((f) => {
+                    const next = { ...f };
+                    if (image) next[name] = image;
+                    else delete next[name];
+                    return next;
+                  });
+                } catch {
+                  setError(t.error);
+                }
+              }}
+            />
           </>
         )}
       </main>
-      <footer>
+      <footer hidden={view === 'library'}>
         <div className="brand small">
-          <Sprout size={20} /> arinova.
+          <Sparkle size={20} fill="currentColor" aria-hidden="true" /> arinova.
         </div>
         <span>{t.tagline}</span>
         <span>NL · TR · EN</span>

@@ -1,4 +1,4 @@
-export async function body(request: Request) {
+export async function bytes(request: Request, limit = 500000) {
   const reader = request.body?.getReader();
   if (!reader) throw new Error('Empty body');
   const chunks: Uint8Array[] = [];
@@ -7,13 +7,16 @@ export async function body(request: Request) {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.length;
-    if (size > 500000) {
+    if (size > limit) {
       await reader.cancel();
-      throw new Error('Maximum upload: 500 KB');
+      throw new Error(`Maximum upload: ${limit / 1000} KB`);
     }
     chunks.push(value);
   }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  return Buffer.concat(chunks);
+}
+export async function body(request: Request) {
+  return JSON.parse((await bytes(request)).toString('utf8'));
 }
 export const unavailable = () =>
   Response.json(
