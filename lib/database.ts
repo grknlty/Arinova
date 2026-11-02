@@ -1,4 +1,5 @@
-import { Pool } from 'pg';
+import { Pool, type PoolConfig } from 'pg';
+import { supabaseRootCa } from './supabase-ca';
 
 const runtime = globalThis as unknown as {
   arinovaDatabase?: Pool;
@@ -7,6 +8,26 @@ const runtime = globalThis as unknown as {
 
 export function databaseUrl() {
   return process.env.DATABASE_URL || process.env.POSTGRES_URL;
+}
+
+// pg treats sslmode=require as full verification, and SSL settings in the URL
+// replace the ssl option. For Supabase, drop them and verify against its CA.
+export function connectionConfig(connectionString: string): PoolConfig {
+  const url = new URL(connectionString);
+  if (!/(^|\.)supabase\.(com|co)$/.test(url.hostname))
+    return { connectionString };
+  for (const key of [
+    'sslmode',
+    'sslrootcert',
+    'sslcert',
+    'sslkey',
+    'uselibpqcompat',
+  ])
+    url.searchParams.delete(key);
+  return {
+    connectionString: url.toString(),
+    ssl: { ca: supabaseRootCa, rejectUnauthorized: true },
+  };
 }
 
 async function initialize(pool: Pool) {
@@ -51,7 +72,7 @@ export async function database(): Promise<Pool | null> {
     return null;
   }
   const pool = (runtime.arinovaDatabase ??= new Pool({
-    connectionString,
+    ...connectionConfig(connectionString),
     max: 3,
     connectionTimeoutMillis: 10000,
   }));
