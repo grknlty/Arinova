@@ -48,6 +48,11 @@ import {
 } from './space-art';
 import { FaceEditor } from './face-editor';
 import type { Faces } from '@/lib/faces';
+type Progress = {
+  answers: Answer[];
+  doubts: Record<number, { unsure?: boolean; notUnderstood?: boolean }>;
+  index: number;
+};
 type View =
   'library' | 'subject' | 'progress' | 'manage' | 'study' | 'quiz' | 'result';
 const feelings = ['sure', 'unsure', 'best_guess', 'not_understood'] as const;
@@ -73,6 +78,33 @@ const subjectIcons = {
   aardrijkskunde: Earth,
   verkeer: TrafficCone,
 };
+type Draft = {
+  title?: string;
+  subject?: string;
+  language?: Language;
+  questions?: unknown[];
+};
+const partSizes = [5, 10, 20];
+// Splits a set into parts of about `size` questions, sized evenly
+// (42 by 10 gives 9+9+8+8+8), each titled "… (deel 2/5)".
+function split<T extends Draft>(set: T, size: number): T[] {
+  const questions = set.questions ?? [];
+  if (!size || questions.length <= size) return [set];
+  const count = Math.ceil(questions.length / size);
+  const word = { nl: 'deel', tr: 'bölüm', en: 'part' }[set.language ?? 'nl'];
+  let at = 0;
+  return Array.from({ length: count }, (_, i) => {
+    const length =
+      Math.floor(questions.length / count) +
+      (i < questions.length % count ? 1 : 0);
+    const part = questions.slice(at, (at += length));
+    return {
+      ...set,
+      title: `${set.title} (${word} ${i + 1}/${count})`,
+      questions: part,
+    };
+  });
+}
 class ApiError extends Error {
   constructor(
     public code: string,
@@ -123,6 +155,7 @@ export default function Home() {
   const [showPassword, setShowPassword] = useState(false);
   const [loginRole, setLoginRole] = useState('learner');
   const [json, setJson] = useState('');
+  const [partSize, setPartSize] = useState(0);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -162,14 +195,59 @@ export default function Home() {
     setSubject(s);
     navigate('subject');
   }
-  function start(s: StudySet | PublicSet) {
+  // A practice in progress is kept in this browser, so leaving it (or closing
+  // the tab) and starting it again continues at the same question.
+  const progressKey = (id: string) => `arinova-progress:${session?.role}:${id}`;
+  function savedProgress(s: StudySet | PublicSet): Progress | null {
+    try {
+      const p = JSON.parse(localStorage.getItem(progressKey(s.id)) ?? 'null');
+      return p?.answers?.length === s.questions.length ? p : null;
+    } catch {
+      return null;
+    }
+  }
+  function clearProgress(id: string) {
+    try {
+      localStorage.removeItem(progressKey(id));
+    } catch {}
+  }
+  function start(s: StudySet | PublicSet, resume = true) {
+    const kept = resume ? savedProgress(s) : null;
+    if (!resume) clearProgress(s.id);
     setSelected(s);
-    setAnswers(s.questions.map(() => ({ option: null, confidence: 'sure' })));
-    setMarked({});
-    setIndex(0);
+    setAnswers(
+      kept?.answers ??
+        s.questions.map(() => ({ option: null, confidence: 'sure' })),
+    );
+    setDoubts(kept?.doubts ?? {});
+    setIndex(kept?.index ?? 0);
     navigate('quiz');
   }
-  const [marked, setMarked] = useState<Record<number, boolean>>({});
+  // Optional checkboxes per question. Not understanding the question is the
+  // stronger signal, so it wins when both are ticked.
+  const [doubts, setDoubts] = useState<
+    Record<number, { unsure?: boolean; notUnderstood?: boolean }>
+  >({});
+  function toggleDoubt(key: 'unsure' | 'notUnderstood', value: boolean) {
+    const next = { ...doubts[index], [key]: value };
+    setDoubts((d) => ({ ...d, [index]: next }));
+    updateAnswer({
+      confidence: next.notUnderstood
+        ? 'not_understood'
+        : next.unsure
+          ? 'unsure'
+          : 'sure',
+    });
+  }
+  useEffect(() => {
+    if (view !== 'quiz' || !selected) return;
+    try {
+      localStorage.setItem(
+        progressKey(selected.id),
+        JSON.stringify({ answers, doubts, index }),
+      );
+    } catch {}
+  }, [view, selected, answers, doubts, index]); // eslint-disable-line react-hooks/exhaustive-deps
   function updateAnswer(patch: Partial<Answer>) {
     setAnswers((a) => a.map((v, i) => (i === index ? { ...v, ...patch } : v)));
   }
@@ -178,6 +256,7 @@ export default function Home() {
     setError('');
     try {
       const r = await api('/api/attempts', { setId: selected!.id, answers });
+      clearProgress(selected!.id);
       setResult(r);
       navigate('result');
       await load();
@@ -368,14 +447,15 @@ export default function Home() {
     .filter((m) => m.wrong)
     .sort((a, b) => b.wrong - a.wrong || b.wrong / b.total - a.wrong / a.total)
     .slice(0, 15);
-  const preview: { title?: string; subject?: string; questions?: unknown[] }[] =
-    (() => {
-      try {
-        return [JSON.parse(json)].flat().filter((p) => p?.title);
-      } catch {
-        return [];
-      }
-    })();
+  const drafts: Draft[] = (() => {
+    try {
+      return [JSON.parse(json)].flat().filter((p) => p?.title);
+    } catch {
+      return [];
+    }
+  })();
+  const preview = drafts.flatMap((d) => split(d, partSize));
+  const longest = Math.max(0, ...drafts.map((d) => d.questions?.length ?? 0));
   const total = allAnswers.length;
   const correct = allAnswers.filter((a) => a.correct).length;
   const wrong = allAnswers.filter(
@@ -557,6 +637,7 @@ export default function Home() {
               {visibleSets.map((s) => {
                 const known = findSubject(s.subject);
                 const Icon = known ? subjectIcons[known.id] : BookOpen;
+                const progress = savedProgress(s);
                 const mark =
                   known?.id === 'rekenen'
                     ? '123'
@@ -604,11 +685,21 @@ export default function Home() {
                             {t.study}
                           </button>
                         )}
+                        {progress && (
+                          <button
+                            className="button secondary"
+                            onClick={() => start(s, false)}
+                          >
+                            {t.startOver}
+                          </button>
+                        )}
                         <button
                           className="button primary"
                           onClick={() => start(s)}
                         >
-                          {t.practice}
+                          {progress
+                            ? `${t.resume} · ${progress.index + 1}/${s.questions.length}`
+                            : t.practice}
                           <ArrowRight size={16} />
                         </button>
                       </div>
@@ -659,7 +750,10 @@ export default function Home() {
         )}
         {view === 'quiz' && selected && (
           <>
-            {back}
+            <button className="back" onClick={() => navigate('subject')}>
+              <ArrowLeft size={16} />
+              {t.exitQuiz}
+            </button>
             <div className="quiz-top">
               <span>{selected.title}</span>
               <strong>
@@ -701,35 +795,32 @@ export default function Home() {
                   </button>
                 ))}
               </div>
-              <fieldset className="feelings">
+              <fieldset className="doubts">
                 <legend>{t.how}</legend>
-                {feelings.map((f, i) => {
-                  const Icon = feelingIcons[i];
-                  return (
-                    <button
-                      type="button"
-                      key={f}
-                      aria-pressed={
-                        (marked[index] && answers[index].confidence === f) ||
-                        false
-                      }
-                      className={
-                        marked[index] && answers[index].confidence === f
-                          ? 'selected'
-                          : ''
-                      }
-                      onClick={() => {
-                        setMarked((m) => ({ ...m, [index]: true }));
-                        updateAnswer({ confidence: f });
-                      }}
-                    >
-                      <span className="feeling-icon">
-                        <Icon size={22} aria-hidden="true" />
-                      </span>
-                      {t[f]}
-                    </button>
-                  );
-                })}
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!!doubts[index]?.notUnderstood}
+                    onChange={(e) =>
+                      toggleDoubt('notUnderstood', e.target.checked)
+                    }
+                  />
+                  <span className="feeling-icon not_understood">
+                    <CircleHelp size={22} aria-hidden="true" />
+                  </span>
+                  {t.not_understood}
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!!doubts[index]?.unsure}
+                    onChange={(e) => toggleDoubt('unsure', e.target.checked)}
+                  />
+                  <span className="feeling-icon unsure">
+                    <CloudSun size={22} aria-hidden="true" />
+                  </span>
+                  {t.unsureAnswer}
+                </label>
               </fieldset>
               <div className="quiz-bottom">
                 <button
@@ -743,7 +834,6 @@ export default function Home() {
                   className="button primary"
                   disabled={
                     busy ||
-                    !marked[index] ||
                     (answers[index].option === null &&
                       answers[index].confidence !== 'not_understood')
                   }
@@ -838,9 +928,11 @@ export default function Home() {
                 const group = allAnswers.filter(
                   (a) => a.confidence === feeling,
                 );
+                // No longer offered in practice; shown only for older answers.
+                if (feeling === 'best_guess' && !group.length) return null;
                 return (
                   <div key={feeling}>
-                    <span className="feeling-icon">
+                    <span className={`feeling-icon ${feeling}`}>
                       <Icon size={22} aria-hidden="true" />
                     </span>
                     <span>{t[feeling]}</span>
@@ -984,6 +1076,24 @@ export default function Home() {
               </div>
               {preview.length > 0 && (
                 <div className="import-preview">
+                  {longest > partSizes[0] && (
+                    <label className="split">
+                      {t.splitLabel}
+                      <select
+                        value={partSize}
+                        onChange={(e) => setPartSize(Number(e.target.value))}
+                      >
+                        <option value={0}>{t.noSplit}</option>
+                        {partSizes
+                          .filter((n) => n < longest)
+                          .map((n) => (
+                            <option key={n} value={n}>
+                              {n} {t.perPart}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  )}
                   <p>{t.checkImport}</p>
                   <ul>
                     {preview.map((p, i) => (
@@ -1026,7 +1136,10 @@ export default function Home() {
                   setError('');
                   setSaved(false);
                   try {
-                    await api('/api/sets', JSON.parse(json));
+                    await api(
+                      '/api/sets',
+                      preview.length === 1 ? preview[0] : preview,
+                    );
                     setJson('');
                     await load();
                     setSaved(true);
@@ -1094,7 +1207,9 @@ function Review({ attempt, lang }: { attempt: Attempt; lang: Language }) {
                   ? t.unanswered
                   : t.wrong}
             </span>
-            <span className="confidence-label">{t[a.confidence]}</span>
+            {a.confidence !== 'sure' && (
+              <span className="confidence-label">{t[a.confidence]}</span>
+            )}
           </div>
           <h3>
             {i + 1}. {a.prompt}

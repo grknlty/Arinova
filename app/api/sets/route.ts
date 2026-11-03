@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   try {
     // One set, or several (a Word file can hold more than one test).
     input = z
-      .union([setSchema, z.array(setSchema).min(1).max(20)])
+      .union([setSchema, z.array(setSchema).min(1).max(50)])
       .parse(await body(req));
   } catch {
     return Response.json(

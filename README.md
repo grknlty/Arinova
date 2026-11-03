@@ -71,7 +71,7 @@ In the parent’s **Add material** tab, upload a Word test (.docx), download the
 
 ### Word tests
 
-A Word file can hold one or more tests. Each test has a title (Title or Heading style), numbered questions (`1. …`) with options on their own lines (`A. …` to `F. …`), and an answer key under a heading starting with **Antwoorden** (or Answers/Cevaplar) with lines like `1. B  Optional explanation`. A question can instead give its answer on a line `Antwoord: B`. Questions may sit in table cells. The subject is taken from the title (for example _Verkeer toets 1_). The file is read on the server (max 4 MB) and shown for checking; nothing is saved until the parent presses save. Questions without an answer are reported by number.
+A Word file can hold one or more tests. Each test has a title (Title or Heading style), numbered questions (`1. …`) with options on their own lines (`A. …` to `F. …`), and an answer key under a heading starting with **Antwoorden** (or Answers/Cevaplar) with lines like `1. B  Optional explanation`. A question can instead give its answer on a line `Antwoord: B`. Questions may sit in table cells. The subject is taken from the title (for example _Verkeer toets 1_). The file is read on the server (max 4 MB) and shown for checking; nothing is saved until the parent presses save. Before saving, a long test can be split into practices of about 5, 10 or 20 questions, titled “… (deel 2/4)”. Questions without an answer are reported by number.
 
 ### JSON A set contains a study text and 1–100 questions. Every question has 2–6 options, a zero-based correctIndex, and an optional explanation. The interface accepts up to 500 KB per upload.
 
@@ -106,14 +106,14 @@ curl --fail-with-body "$ARINOVA_URL/api/sets" \
   --data-binary @study-set.json
 ```
 
-- `POST /api/sets`: parent cookie or import token; returns `{ "id": "…" }`, status 201. An array of up to 20 sets is saved in one transaction and returns `{ "ids": […] }`.
+- `POST /api/sets`: parent cookie or import token; returns `{ "id": "…" }`, status 201. An array of up to 50 sets is saved in one transaction and returns `{ "ids": […] }`.
 - `POST /api/import`: parent cookie or import token; body is a .docx file. Returns the draft sets without saving them.
 - `GET /api/sets`: signed-in parent/learner; learner response omits answer keys.
 - `POST /api/attempts`: signed-in parent/learner; body `{ "setId": "…", "answers": [{ "option": 0, "confidence": "sure" }] }`. Submit one entry per question, in order. Options are zero-based; `null` is allowed only with `not_understood`.
 - Confidence values: `sure`, `unsure`, `best_guess`, `not_understood`.
 - `GET /api/progress`: parent only; complete attempt history including per-question feedback.
 
-Correctness and confidence are independent: a guessed correct answer remains a learning signal. Unanswered questions count separately from incorrect choices. The dashboard includes repeated attempts and records timestamps; it is not a claim of mastery.
+While practising, Arin can tick “I don’t understand the question” (which also lets her skip it) or “I’m not sure about my answer”; both are optional, and no tick is recorded as `sure`. Leaving a practice keeps her place and answers in that browser, so starting it again continues at the same question; finishing it clears this. Correctness and confidence are independent: a guessed correct answer remains a learning signal. Unanswered questions count separately from incorrect choices. The dashboard includes repeated attempts and records timestamps; it is not a claim of mastery.
 
 ## Current scope and next steps
 

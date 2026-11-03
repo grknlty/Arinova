@@ -161,6 +161,8 @@ try {
   assert.equal((await page.request.get(url + '/api/progress')).status(), 403);
   const sets = await (await page.request.get(url + '/api/sets')).json();
   assert.equal('correctIndex' in sets[0].questions[0], false);
+  // Practice cards live on each subject's planet page.
+  await page.getByRole('button', { name: 'Language', exact: true }).click();
   const card = page.getByRole('article').filter({
     has: page.getByRole('heading', { name: 'Browser workflow test' }),
   });
@@ -174,13 +176,18 @@ try {
     true,
   );
   await page.getByRole('button', { name: 'A Book', exact: true }).click();
-  await page
-    .getByRole('button', { name: 'This seems most reasonable' })
-    .click();
+  // Doubt checkboxes are optional: an answer alone is enough to continue.
+  assert.equal(
+    await page.getByRole('button', { name: 'Next question' }).isDisabled(),
+    false,
+  );
+  await page.getByLabel('I’m not sure about my answer').check();
   await page.getByRole('button', { name: 'Next question' }).click();
-  await page
-    .getByRole('button', { name: 'I don’t understand the question' })
-    .click();
+  // Leaving keeps her place: the card continues at question 2.
+  await page.getByRole('button', { name: 'Stop, continue later' }).click();
+  await card.getByRole('button', { name: /^Continue · 2\// }).click();
+  await page.getByText('Question 2 of', { exact: false }).waitFor();
+  await page.getByLabel('I don’t understand the question').check();
   await page.getByRole('button', { name: 'See my results' }).click();
   await page.getByRole('heading', { name: 'Well practised!' }).waitFor();
   await page.getByText('Correct, but still unsure', { exact: true }).waitFor();
@@ -196,7 +203,7 @@ try {
   const attempts = await (await page.request.get(url + '/api/progress')).json();
   assert.equal(attempts.length, 1);
   assert.equal(attempts[0].correct, 1);
-  assert.equal(attempts[0].answers[0].confidence, 'best_guess');
+  assert.equal(attempts[0].answers[0].confidence, 'unsure');
   assert.equal(attempts[0].answers[1].selected, null);
   await page.locator('summary').click();
   await page.getByText('Correct, but still unsure', { exact: true }).waitFor();
