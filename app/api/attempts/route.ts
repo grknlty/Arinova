@@ -12,7 +12,9 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid answers' }, { status: 400 });
   }
   try {
-    const set = (await list('sets')).find((s) => s.id === data.setId);
+    const set = (await list('sets')).find(
+      (s) => s.id === data.setId && !s.deletedAt,
+    );
     if (!set) return new Response(null, { status: 404 });
     let attempt;
     try {

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { database } from '../lib/database';
-import { addAttempt, addSets, image, list } from '../lib/store';
+import { addAttempt, addSets, image, list, setDeleted } from '../lib/store';
 import { tables } from '../lib/records';
 import { allowLogin } from '../lib/rate-limit';
 import { grade } from '../lib/model';
@@ -82,6 +82,43 @@ test(
           );
           assert.equal(rows.rows[2].option_text, null);
           assert.ok((await list('sets')).some((s) => s.id === sample.id));
+        },
+      );
+      await t.test(
+        'records where material came from; deleting keeps attempts',
+        async () => {
+          const { sample: _, ...content } = sample;
+          void _;
+          const set = {
+            ...content,
+            id: crypto.randomUUID(),
+            createdAt: new Date().toISOString(),
+            source: 'word' as const,
+            fileName: 'Toets.docx',
+            lesson: 'Les 3 tot en met 5',
+            group: 'Groep 6',
+          };
+          await addSets([set]);
+          const attempt = grade(
+            set,
+            set.questions.map(() => ({
+              option: 0,
+              confidence: 'sure' as const,
+            })),
+          );
+          await addAttempt(attempt, 'learner');
+          const find = async () =>
+            (await list('sets')).find((s) => s.id === set.id)!;
+          assert.equal((await find()).source, 'word');
+          assert.equal((await find()).fileName, 'Toets.docx');
+          assert.equal((await find()).lesson, 'Les 3 tot en met 5');
+          assert.equal((await find()).group, 'Groep 6');
+          assert.equal(await setDeleted(set.id, true), true);
+          assert.ok((await find()).deletedAt);
+          assert.ok((await list('attempts')).some((a) => a.id === attempt.id));
+          assert.equal(await setDeleted(set.id, false), true);
+          assert.equal('deletedAt' in (await find()), false);
+          assert.equal(await setDeleted(crypto.randomUUID(), true), false);
         },
       );
       await t.test('stores pictures and lists them as URLs', async () => {

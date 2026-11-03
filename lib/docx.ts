@@ -1,5 +1,6 @@
 import { inflateRawSync } from 'node:zlib';
 import { findSubject } from './subjects';
+import { groupIn, lessonIn, withoutLessonAndGroup } from './school';
 
 // Reads tests from a Word file laid out like a school toets:
 //
@@ -17,6 +18,8 @@ export type DraftSet = {
   subject: string;
   language: 'nl' | 'tr' | 'en';
   description: string;
+  lesson?: string;
+  group?: string;
   material: string;
   questions: {
     prompt: string;
@@ -199,20 +202,25 @@ export function parseTests(lines: Line[]): DraftSet[] {
       const title = d.title.replace(/\s+/g, ' ') || `Toets ${i + 1}`;
       if (problems.length)
         throw new Error(`${title} — question ${problems.join('; ')}`);
+      // Paper-only details such as name and date fields are left out.
+      const header = d.header
+        .map((h) =>
+          h
+            .replace(/\S+:\s*_+/g, '')
+            .replace(/_+/g, '')
+            .trim(),
+        )
+        .filter((h) => h && !/omcirkel|circle|daire/i.test(h))
+        .join(' ');
+      const lesson = lessonIn(header) ?? lessonIn(title);
+      const group = groupIn(header) ?? groupIn(title);
       return {
         title,
         subject: guessSubject(title),
         language: guessLanguage(lines),
-        // Paper-only details such as name and date fields are left out.
-        description: d.header
-          .map((h) =>
-            h
-              .replace(/\S+:\s*_+/g, '')
-              .replace(/_+/g, '')
-              .trim(),
-          )
-          .filter((h) => h && !/omcirkel|circle|daire/i.test(h))
-          .join(' '),
+        description: withoutLessonAndGroup(header),
+        ...(lesson ? { lesson } : {}),
+        ...(group ? { group } : {}),
         material: '',
         questions,
       };

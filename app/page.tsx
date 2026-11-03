@@ -29,6 +29,8 @@ import {
   Telescope,
   TrafficCone,
   Landmark,
+  Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import { words, type Language } from '@/lib/i18n';
 import { sample } from '@/lib/sample';
@@ -40,6 +42,7 @@ import {
 } from '@/lib/subjects';
 import type { StudySet, PublicSet, Answer, Attempt } from '@/lib/model';
 import { normalizeSets } from '@/lib/formats';
+import { groupIn, lessonIn } from '@/lib/school';
 import {
   ArinAstronaut,
   GalaxyCanvas,
@@ -162,6 +165,11 @@ export default function Home() {
   const [loginRole, setLoginRole] = useState('learner');
   const [json, setJson] = useState('');
   const [partSize, setPartSize] = useState(0);
+  // Where the material in the box came from, kept with the saved sets.
+  const [origin, setOrigin] = useState<{
+    source: 'word' | 'json';
+    fileName?: string;
+  }>({ source: 'json' });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -256,6 +264,26 @@ export default function Home() {
   }, [view, selected, answers, doubts, index]); // eslint-disable-line react-hooks/exhaustive-deps
   function updateAnswer(patch: Partial<Answer>) {
     setAnswers((a) => a.map((v, i) => (i === index ? { ...v, ...patch } : v)));
+  }
+  // Deleting keeps Arin's earlier answers; the set only leaves her library.
+  async function setDeleted(s: StudySet | PublicSet, deleted: boolean) {
+    if (deleted && !window.confirm(t.confirmDelete.replace('{title}', s.title)))
+      return;
+    setBusy(true);
+    setError('');
+    try {
+      const r = await fetch(`/api/sets/${s.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleted }),
+      });
+      if (!r.ok) throw new Error();
+      await load();
+    } catch {
+      setError(t.error);
+    } finally {
+      setBusy(false);
+    }
   }
   async function finish() {
     setBusy(true);
@@ -407,7 +435,9 @@ export default function Home() {
   const subjectInfo = findSubject(subject);
   const SubjectIcon = subjectInfo ? subjectIcons[subjectInfo.id] : Sparkle;
   const visibleSets = sets.filter(
-    (s) => subject === 'all' || canonicalSubject(s.subject) === subject,
+    (s) =>
+      !s.deletedAt &&
+      (subject === 'all' || canonicalSubject(s.subject) === subject),
   );
   const allAnswers = attempts.flatMap((a) => a.answers);
   // Questions answered wrong at least once, most often wrong first.
@@ -676,13 +706,10 @@ export default function Home() {
                     <div className="card-body">
                       <div className="card-meta">
                         <span>{t[s.language]}</span>
-                        <span>·</span>
-                        <span>
-                          {s.questions.length} {t.questions}
-                        </span>
                       </div>
                       <h3>{s.title}</h3>
-                      <p>{s.description}</p>
+                      {s.description && <p>{s.description}</p>}
+                      <SetFacts set={s} lang={lang} />
                       {s.sample && (
                         <span className="sample-label">{t.sample}</span>
                       )}
@@ -1070,7 +1097,10 @@ export default function Home() {
                       setSaved(false);
                       if (!/\.docx$/i.test(file.name)) {
                         if (file.size > 4000000) setError(t.importError);
-                        else setJson(await file.text());
+                        else {
+                          setJson(await file.text());
+                          setOrigin({ source: 'json', fileName: file.name });
+                        }
                         return;
                       }
                       // Word files are read on the server into draft sets
@@ -1084,7 +1114,10 @@ export default function Home() {
                         const payload = await r.json().catch(() => null);
                         if (!r.ok)
                           setError(`${t.docxError} ${payload?.error ?? ''}`);
-                        else setJson(JSON.stringify(payload, null, 2));
+                        else {
+                          setJson(JSON.stringify(payload, null, 2));
+                          setOrigin({ source: 'word', fileName: file.name });
+                        }
                       } catch {
                         setError(t.docxError);
                       } finally {
@@ -1182,12 +1215,13 @@ export default function Home() {
                   setBusy(true);
                   setError('');
                   setSaved(false);
+                  const upload = preview.map((p) => ({ ...p, ...origin }));
                   try {
                     const r = await fetch('/api/sets', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify(
-                        preview.length === 1 ? preview[0] : preview,
+                        upload.length === 1 ? upload[0] : upload,
                       ),
                     });
                     // The server names what is wrong, e.g. which question.
@@ -1201,6 +1235,7 @@ export default function Home() {
                       return;
                     }
                     setJson('');
+                    setOrigin({ source: 'json' });
                     await load();
                     setSaved(true);
                   } catch {
@@ -1219,6 +1254,64 @@ export default function Home() {
                   {t.saved}
                 </p>
               )}
+            </section>
+            <section className="paper history">
+              <h2>{t.history}</h2>
+              <p>{t.historyText}</p>
+              <ul className="history-list">
+                {sets.map((s) => {
+                  const practised = attempts.filter(
+                    (a) => a.setId === s.id,
+                  ).length;
+                  const when = (iso: string) =>
+                    new Date(iso).toLocaleString(lang, {
+                      timeZone: 'Europe/Amsterdam',
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    });
+                  const source = s.sample
+                    ? t.sourceSample
+                    : s.source === 'word'
+                      ? t.sourceWord
+                      : s.source === 'api'
+                        ? t.sourceApi
+                        : s.source === 'json'
+                          ? t.sourceJson
+                          : t.sourceUnknown;
+                  return (
+                    <li key={s.id} className={s.deletedAt ? 'deleted' : ''}>
+                      <div>
+                        <strong>{s.title}</strong>
+                        <span>
+                          {subjectLabel(s.subject, lang)} · {s.questions.length}{' '}
+                          {t.questions} · {practised}× {t.practised}
+                        </span>
+                        <span>
+                          {when(s.createdAt)} · {source}
+                          {s.fileName && ` · ${s.fileName}`}
+                        </span>
+                        {s.deletedAt && (
+                          <span className="pill bad">
+                            {t.deletedOn} {when(s.deletedAt)}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        className="button secondary"
+                        disabled={busy}
+                        onClick={() => setDeleted(s, !s.deletedAt)}
+                      >
+                        {s.deletedAt ? (
+                          <RotateCcw size={16} aria-hidden="true" />
+                        ) : (
+                          <Trash2 size={16} aria-hidden="true" />
+                        )}
+                        {s.deletedAt ? t.restore : t.delete}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             </section>
             <FaceEditor
               faces={faces}
@@ -1249,6 +1342,44 @@ export default function Home() {
         <span>NL · TR · EN</span>
       </footer>
     </div>
+  );
+}
+// Facts about a set for its card. Older sets have no lesson or group
+// fields, so those are looked for in the title and description.
+function SetFacts({
+  set,
+  lang,
+}: {
+  set: StudySet | PublicSet;
+  lang: Language;
+}) {
+  const t = words[lang];
+  const counts = set.questions.map((q) => q.options.length);
+  const [low, high] = [Math.min(...counts), Math.max(...counts)];
+  const text = `${set.title} ${set.description}`;
+  const facts: [string, string | number][] = [
+    [t.factQuestions, set.questions.length],
+    [t.factOptions, low === high ? low : `${low}–${high}`],
+    [t.factSubject, subjectLabel(set.subject, lang)],
+    [t.factLesson, set.lesson ?? lessonIn(text) ?? '—'],
+    [t.factGroup, set.group ?? groupIn(text) ?? '—'],
+    [
+      t.factAdded,
+      new Date(set.createdAt).toLocaleDateString(lang, {
+        timeZone: 'Europe/Amsterdam',
+        dateStyle: 'medium',
+      }),
+    ],
+  ];
+  return (
+    <dl className="set-facts">
+      {facts.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 function Review({

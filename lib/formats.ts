@@ -29,6 +29,7 @@ type Toets = {
   description?: unknown;
   material?: unknown;
   lessons?: unknown[];
+  group?: unknown;
   questions?: Question[];
 };
 
@@ -88,9 +89,11 @@ function convert(toets: Toets) {
     title: [toets.title, toets.toetsname].filter(Boolean).join(' – '),
     subject: toets.subject,
     language: toets.language ?? 'nl',
-    description:
-      toets.description ??
-      (toets.lessons?.length ? lessonsText(toets.lessons, toets.language) : ''),
+    description: toets.description ?? '',
+    ...(toets.lessons?.length
+      ? { lesson: lessonsText(toets.lessons, toets.language) }
+      : {}),
+    ...(toets.group ? { group: toets.group } : {}),
     material: toets.material ?? '',
     questions,
   };

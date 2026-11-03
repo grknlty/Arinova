@@ -9,10 +9,16 @@ import {
   insertAttempt,
   insertSet,
   readAttempts,
+  markDeleted,
   readImage,
   readSets,
 } from './records';
-type Data = { sets: StudySet[]; attempts: Attempt[] };
+type Data = {
+  sets: StudySet[];
+  attempts: Attempt[];
+  // The sample lives in code; when it is deleted locally this holds the time.
+  sampleDeletedAt?: string;
+};
 const globalStore = globalThis as unknown as {
   arinovaQueue?: Promise<unknown>;
 };
@@ -38,8 +44,15 @@ export async function list<T extends 'sets' | 'attempts'>(
     return (
       kind === 'sets' ? await readSets(db) : await readAttempts(db)
     ) as Data[T];
-  const values = (await local())[kind];
-  return (kind === 'sets' ? [...values, sample] : values) as Data[T];
+  const data = await local();
+  const values = data[kind];
+  if (kind !== 'sets') return values as Data[T];
+  return [
+    ...values,
+    data.sampleDeletedAt
+      ? { ...sample, deletedAt: data.sampleDeletedAt }
+      : sample,
+  ] as Data[T];
 }
 async function transaction(
   db: Pool,
@@ -92,4 +105,24 @@ export async function image(setId: string, question: number, option?: number) {
     question
   ];
   return (option === undefined ? q?.image : q?.optionImages?.[option]) ?? null;
+}
+// Deletes (or with deleted false, restores) a set; false if it does not exist.
+export async function setDeleted(setId: string, deleted: boolean) {
+  const db = await database();
+  if (db) return markDeleted(db, setId, deleted);
+  let found = false;
+  await writeLocal((data) => {
+    const at = deleted ? new Date().toISOString() : undefined;
+    if (setId === sample.id) {
+      found = true;
+      data.sampleDeletedAt = at;
+      return;
+    }
+    const set = data.sets.find((s) => s.id === setId);
+    if (!set) return;
+    found = true;
+    if (at) set.deletedAt = at;
+    else delete set.deletedAt;
+  });
+  return found;
 }

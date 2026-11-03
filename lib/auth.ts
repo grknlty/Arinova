@@ -49,12 +49,17 @@ export function token(role: Role) {
 // The import token works from any caller (e.g. a ChatGPT action, which may
 // send its own Origin). A browser never adds it by itself, so the
 // same-origin check is only needed for the parent's session cookie.
-export async function canImport(request: Request) {
+export function hasImportToken(request: Request) {
   const token = process.env.IMPORT_API_TOKEN;
+  return !!(
+    token &&
+    token.length >= 32 &&
+    equal(request.headers.get('authorization') ?? '', `Bearer ${token}`)
+  );
+}
+export async function canImport(request: Request) {
   return (
-    (token &&
-      token.length >= 32 &&
-      equal(request.headers.get('authorization') ?? '', `Bearer ${token}`)) ||
+    hasImportToken(request) ||
     (sameOrigin(request) && (await role()) === 'parent')
   );
 }

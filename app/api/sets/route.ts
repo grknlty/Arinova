@@ -1,4 +1,4 @@
-import { role, canImport, importRefusal } from '@/lib/auth';
+import { role, canImport, importRefusal, hasImportToken } from '@/lib/auth';
 import { z } from 'zod';
 import { setSchema, publicSet, imageUrls, importProblems } from '@/lib/model';
 import { normalizeSets } from '@/lib/formats';
@@ -9,7 +9,12 @@ export async function GET() {
   if (!user) return new Response(null, { status: 401 });
   try {
     const sets = (await list('sets')).map(imageUrls);
-    return Response.json(user === 'parent' ? sets : sets.map(publicSet));
+    // The parent also sees deleted sets, for the history of added material.
+    return Response.json(
+      user === 'parent'
+        ? sets
+        : sets.filter((s) => !s.deletedAt).map(publicSet),
+    );
   } catch {
     return unavailable();
   }
@@ -37,8 +42,10 @@ export async function POST(req: Request) {
   }
   // Sets are listed newest first; keep a batch in its original order.
   const now = Date.now();
+  const viaApi = hasImportToken(req);
   const sets = [input].flat().map((s, i) => ({
     ...s,
+    source: viaApi ? ('api' as const) : (s.source ?? 'json'),
     id: crypto.randomUUID(),
     createdAt: new Date(now - i).toISOString(),
   }));

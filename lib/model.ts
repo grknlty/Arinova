@@ -18,6 +18,12 @@ export const setSchema = z.object({
   language: z.enum(['nl', 'tr', 'en']),
   description: z.string().max(1000).default(''),
   material: z.string().max(50000).default(''),
+  // How the material arrived, for the parent's history of added material.
+  source: z.enum(['word', 'json', 'api']).optional(),
+  fileName: z.string().trim().max(200).optional(),
+  // School context shown on the card, e.g. "Les 3 tot en met 5", "Groep 7–8".
+  lesson: z.string().trim().min(1).max(100).optional(),
+  group: z.string().trim().min(1).max(60).optional(),
   questions: z
     .array(
       z
@@ -45,6 +51,8 @@ export type StudySet = z.infer<typeof setSchema> & {
   id: string;
   createdAt: string;
   sample?: boolean;
+  // Deleted sets leave the learning space; their attempts stay in progress.
+  deletedAt?: string;
 };
 export type PublicSet = Omit<StudySet, 'questions'> & {
   questions: {

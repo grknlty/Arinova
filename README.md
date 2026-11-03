@@ -42,16 +42,16 @@ Passwords and keys go in Vercel settings, never Git, browser code, or chat. Pare
 
 With PostgreSQL, content and answers are stored relationally:
 
-| Table                           | Columns                                                                                                                   |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `arinova_groups`                | `id`, `name`                                                                                                              |
-| `arinova_subjects`              | `id`, `subject_name`, `group_id`                                                                                          |
-| `arinova_users`                 | `id`, `name`, `user_name`, `role` (`parent`/`learner`), `group_id`                                                        |
-| `arinova_tests`                 | `id`, `subject_id`, `title`, `description`, `material`, `language`, `is_sample`, `created_at`                             |
-| `arinova_questions`             | `id`, `subject_id`, `test_id`, `position`, `question_text`, `explanation`, `answer_count`, `image`                        |
-| `arinova_options`               | `id`, `question_id`, `position`, `option_text`, `is_answer`, `image`                                                      |
-| `arinova_attempts`              | `id`, `user_id`, `test_id`, `correct`, `total`, `created_at`                                                              |
-| `arinova_user_question_answers` | `id`, `attempt_id`, `user_id`, `question_id`, `options_id` (null when skipped), `is_correct`, `confidence`, `answered_at` |
+| Table                           | Columns                                                                                                                                                  |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `arinova_groups`                | `id`, `name`                                                                                                                                             |
+| `arinova_subjects`              | `id`, `subject_name`, `group_id`                                                                                                                         |
+| `arinova_users`                 | `id`, `name`, `user_name`, `role` (`parent`/`learner`), `group_id`                                                                                       |
+| `arinova_tests`                 | `id`, `subject_id`, `title`, `description`, `material`, `language`, `is_sample`, `created_at`, `source`, `file_name`, `lesson`, `group_id`, `deleted_at` |
+| `arinova_questions`             | `id`, `subject_id`, `test_id`, `position`, `question_text`, `explanation`, `answer_count`, `image`                                                       |
+| `arinova_options`               | `id`, `question_id`, `position`, `option_text`, `is_answer`, `image`                                                                                     |
+| `arinova_attempts`              | `id`, `user_id`, `test_id`, `correct`, `total`, `created_at`                                                                                             |
+| `arinova_user_question_answers` | `id`, `attempt_id`, `user_id`, `question_id`, `options_id` (null when skipped), `is_correct`, `confidence`, `answered_at`                                |
 
 A test is one toets; an attempt is one practice session through it. The parent and learner sign-in roles each have a user row, seeded on first use; set `LEARNER_NAME` and `LEARNER_GROUP` to change the defaults (`Arin`, `Groep 7–8`). Sets and attempts saved by earlier versions in `arinova_records` are copied into these tables once and kept there with kind `sets_migrated`/`attempts_migrated`. `arinova_records` still holds the space-friend photos.
 
@@ -68,6 +68,8 @@ GROUP BY q.id ORDER BY wrong DESC LIMIT 20;
 ## Add study material
 
 In the parent’s **Add material** tab, upload a Word test (.docx), download the example JSON, or upload/paste a JSON study set.
+
+Below the upload box, **Added material** lists every set, newest first: when and how it was added (Word file, JSON, or ChatGPT/API), its file name, subject, number of questions and how often it was practised. **Delete** removes a set from the learning space after a confirmation; Arin’s results for it stay in Progress, and **Restore** puts it back. Each practice card shows the number of questions, options per question, subject, lesson, group and date added. Lesson and group come from the material (a Word header such as “Les 3 tot en met 5 • Groep 7–8”, the JSON fields `lesson` and `group`, or the generated format’s `lessons`); for older sets they are read from the title or description. Changing the interface language translates the app’s labels, not the school material.
 
 ### Word tests
 
@@ -122,6 +124,7 @@ curl --fail-with-body "$ARINOVA_URL/api/sets" \
 ```
 
 - `POST /api/sets`: parent cookie or import token; returns `{ "id": "…" }`, status 201. An array of up to 50 sets is saved in one transaction and returns `{ "ids": […] }`.
+- `PATCH /api/sets/{id}`: parent only; body `{ "deleted": true }` hides a set from the learning space (answers are kept), `false` restores it.
 - `POST /api/import`: parent cookie or import token; body is a .docx file. Returns the draft sets without saving them.
 - `GET /api/sets`: signed-in parent/learner; learner response omits answer keys.
 - `POST /api/attempts`: signed-in parent/learner; body `{ "setId": "…", "answers": [{ "option": 0, "confidence": "sure" }] }`. Submit one entry per question, in order. Options are zero-based; `null` is allowed only with `not_understood`.

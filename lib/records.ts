@@ -77,6 +77,12 @@ export const schema = `
   -- Optional pictures as data URLs; added after the first release.
   ALTER TABLE public.arinova_questions ADD COLUMN IF NOT EXISTS image text;
   ALTER TABLE public.arinova_options ADD COLUMN IF NOT EXISTS image text;
+  ALTER TABLE public.arinova_tests ADD COLUMN IF NOT EXISTS source text;
+  ALTER TABLE public.arinova_tests ADD COLUMN IF NOT EXISTS file_name text;
+  ALTER TABLE public.arinova_tests ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+  ALTER TABLE public.arinova_tests ADD COLUMN IF NOT EXISTS lesson text;
+  ALTER TABLE public.arinova_tests
+    ADD COLUMN IF NOT EXISTS group_id uuid REFERENCES public.arinova_groups(id);
   CREATE INDEX IF NOT EXISTS arinova_answers_question
     ON public.arinova_user_question_answers (question_id, is_correct);
   CREATE INDEX IF NOT EXISTS arinova_attempts_user
@@ -118,10 +124,20 @@ export async function insertSet(client: Client, set: StudySet) {
     [set.subject],
   );
   const subjectId = subject.rows[0].id;
+  const group = set.group
+    ? (
+        await client.query(
+          `INSERT INTO public.arinova_groups (name) VALUES ($1)
+           ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+          [set.group],
+        )
+      ).rows[0].id
+    : null;
   const test = await client.query(
     `INSERT INTO public.arinova_tests
-       (id, subject_id, title, description, material, language, is_sample, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (id, subject_id, title, description, material, language, is_sample, created_at,
+        source, file_name, lesson, group_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      ON CONFLICT (id) DO NOTHING`,
     [
       set.id,
@@ -132,6 +148,10 @@ export async function insertSet(client: Client, set: StudySet) {
       set.language,
       !!set.sample,
       set.createdAt,
+      set.source ?? null,
+      set.fileName ?? null,
+      set.lesson ?? null,
+      group,
     ],
   );
   if (!test.rowCount) return;
@@ -225,7 +245,8 @@ export async function insertAttempt(
 export async function readSets(client: Client): Promise<StudySet[]> {
   const result = await client.query(`
     SELECT t.id, t.title, s.subject_name AS subject, t.language, t.description,
-      t.material, t.is_sample, t.created_at,
+      t.material, t.is_sample, t.created_at, t.source, t.file_name, t.deleted_at,
+      t.lesson, g.name AS group_name,
       COALESCE((
         -- Pictures are listed as the URLs that serve them, not their data.
         SELECT jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
@@ -249,6 +270,7 @@ export async function readSets(client: Client): Promise<StudySet[]> {
       ), '[]') AS questions
     FROM public.arinova_tests t
     JOIN public.arinova_subjects s ON s.id = t.subject_id
+    LEFT JOIN public.arinova_groups g ON g.id = t.group_id
     ORDER BY t.created_at DESC
   `);
   return result.rows.map((r) => ({
@@ -261,7 +283,27 @@ export async function readSets(client: Client): Promise<StudySet[]> {
     questions: r.questions,
     createdAt: r.created_at.toISOString(),
     ...(r.is_sample ? { sample: true } : {}),
+    ...(r.source ? { source: r.source } : {}),
+    ...(r.file_name ? { fileName: r.file_name } : {}),
+    ...(r.lesson ? { lesson: r.lesson } : {}),
+    ...(r.group_name ? { group: r.group_name } : {}),
+    ...(r.deleted_at ? { deletedAt: r.deleted_at.toISOString() } : {}),
   }));
+}
+
+// Soft delete: the set and its answers stay, but it leaves the library.
+export async function markDeleted(
+  client: Client,
+  setId: string,
+  deleted: boolean,
+) {
+  const result = await client.query(
+    `UPDATE public.arinova_tests
+     SET deleted_at = CASE WHEN $2 THEN now() ELSE NULL END
+     WHERE id = $1`,
+    [setId, deleted],
+  );
+  return !!result.rowCount;
 }
 
 export async function readAttempts(client: Client): Promise<Attempt[]> {

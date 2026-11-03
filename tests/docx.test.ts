@@ -63,7 +63,9 @@ test('reads two tests with answer keys from a Word file', () => {
     title: 'Verkeer toets 1 Kennis',
     subject: 'Verkeer',
     language: 'nl',
-    description: 'Les 3 • Groep 7–8',
+    description: '',
+    lesson: 'Les 3',
+    group: 'Groep 7–8',
     material: '',
     questions: [
       {

@@ -31,7 +31,8 @@ const toets = {
 test('converts the toets layout, including pictures', () => {
   const set = setSchema.parse(normalizeSets(toets));
   assert.equal(set.title, 'Verkeer met afbeeldingen – Les 3 set1');
-  assert.equal(set.description, 'Les 3, 4 en 5');
+  assert.equal(set.description, '');
+  assert.equal(set.lesson, 'Les 3, 4 en 5');
   assert.deepEqual(set.questions[0], {
     prompt: 'Wat betekent dit bord?',
     options: ['Verboden', 'Verplicht fietspad'],
