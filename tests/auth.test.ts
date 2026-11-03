@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sameOrigin, equal, token, demo, canImport } from '../lib/auth';
+import {
+  sameOrigin,
+  equal,
+  token,
+  demo,
+  canImport,
+  importRefusal,
+} from '../lib/auth';
+import { GET as openapi } from '../app/openapi.json/route';
 test('origin protection tolerates normalized URLs but rejects other sites', () => {
   assert.equal(
     sameOrigin(
@@ -77,4 +85,40 @@ test('the import token works from another origin; cookies need the same origin',
     if (saved === undefined) delete process.env.IMPORT_API_TOKEN;
     else process.env.IMPORT_API_TOKEN = saved;
   }
+});
+test('refused imports say what to fix, never the key', async () => {
+  const saved = process.env.IMPORT_API_TOKEN;
+  const reason = async (authorization?: string) =>
+    (
+      await importRefusal(
+        new Request('https://arinova.example/api/sets', {
+          headers: authorization ? { authorization } : {},
+        }),
+      ).json()
+    ).error as string;
+  try {
+    delete process.env.IMPORT_API_TOKEN;
+    assert.match(await reason('Bearer abc'), /imports are off/);
+    process.env.IMPORT_API_TOKEN = 'test-import-token-that-is-long-enough-123';
+    assert.match(await reason(), /Authorization: Bearer/);
+    assert.match(await reason('Basic abc'), /type Bearer/);
+    assert.equal(await reason('Bearer abc'), 'The import key is not correct.');
+    assert.doesNotMatch(await reason('Bearer abc'), /long-enough/);
+  } finally {
+    if (saved === undefined) delete process.env.IMPORT_API_TOKEN;
+    else process.env.IMPORT_API_TOKEN = saved;
+  }
+});
+test('the OpenAPI description points at the public address', async () => {
+  const doc = await openapi(
+    new Request('http://0.0.0.0:3000/openapi.json', {
+      headers: {
+        'x-forwarded-host': 'arinova.example',
+        'x-forwarded-proto': 'https',
+      },
+    }),
+  ).json();
+  assert.deepEqual(doc.servers, [{ url: 'https://arinova.example' }]);
+  assert.equal(doc.paths['/api/sets'].post.operationId, 'addStudySet');
+  assert.equal(doc.components.securitySchemes.importKey.scheme, 'bearer');
 });

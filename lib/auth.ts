@@ -58,6 +58,20 @@ export async function canImport(request: Request) {
     (sameOrigin(request) && (await role()) === 'parent')
   );
 }
+// Why an import was refused, so an API caller (such as a ChatGPT action) can
+// show what to fix. Says only whether imports are enabled, never the token.
+export function importRefusal(request: Request) {
+  const token = process.env.IMPORT_API_TOKEN;
+  const sent = request.headers.get('authorization');
+  const error = !sent
+    ? 'Sign in as parent, or send the header Authorization: Bearer <IMPORT_API_TOKEN>.'
+    : !/^Bearer \S+$/.test(sent)
+      ? 'Send the import key as Authorization: Bearer <IMPORT_API_TOKEN> (authentication type Bearer).'
+      : !token || token.length < 32
+        ? 'API imports are off: set IMPORT_API_TOKEN (at least 32 characters) on the server and redeploy.'
+        : 'The import key is not correct.';
+  return Response.json({ error }, { status: 403 });
+}
 export function sameOrigin(request: Request) {
   const origin = request.headers.get('origin');
   if (!origin) return true;

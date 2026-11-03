@@ -1,4 +1,4 @@
-import { role, canImport } from '@/lib/auth';
+import { role, canImport, importRefusal } from '@/lib/auth';
 import { z } from 'zod';
 import { setSchema, publicSet, imageUrls, importProblems } from '@/lib/model';
 import { normalizeSets } from '@/lib/formats';
@@ -15,7 +15,7 @@ export async function GET() {
   }
 }
 export async function POST(req: Request) {
-  if (!(await canImport(req))) return new Response(null, { status: 403 });
+  if (!(await canImport(req))) return importRefusal(req);
   let input;
   try {
     // One set, or several (a Word file can hold more than one test). Sets

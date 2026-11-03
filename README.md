@@ -101,6 +101,15 @@ A set contains a study text and 1–100 questions. Every question has 2–6 opti
 
 Supported content languages: `nl`, `tr`, `en`. All content is rendered as plain text, never executed as HTML. Study notes can also be printed from the study view.
 
+### Upload from ChatGPT
+
+ChatGPT cannot reach the site from an ordinary chat: pasting the key into a chat makes it try its own sandbox, which has no internet access (“The outbound call did not succeed”). Use a custom GPT with an action instead:
+
+1. In ChatGPT, **Explore GPTs → Create → Configure → Create new action**.
+2. **Import from URL**: `https://arinova.vercel.app/openapi.json` (use the production address; preview addresses are behind Vercel’s login).
+3. **Authentication → API Key → Bearer**, and paste the value of `IMPORT_API_TOKEN`. Keep the key only there and in Vercel, never in a chat.
+4. Ask the GPT to add a test; it calls `addStudySet` and the test appears in the learning space. A refused call returns an `error` that says whether the key is missing, has the wrong type, is wrong, or imports are switched off on the server.
+
 ### API
 
 The authenticated ingestion endpoint allows a future assistant integration to add prepared questions directly. Keep the bearer token server-side. It does not connect this chat automatically to your website: an authenticated integration/action must be configured separately once a deployed URL exists.
