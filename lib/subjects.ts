@@ -45,6 +45,12 @@ export const subjects = [
     aliases: ['verkeer', 'traffic', 'trafik'],
     labels: { nl: 'Verkeer', en: 'Traffic', tr: 'Trafik' },
   },
+  {
+    id: 'geschiedenis',
+    name: 'Geschiedenis',
+    aliases: ['geschiedenis', 'gesch', 'history', 'tarih'],
+    labels: { nl: 'Geschiedenis', en: 'History', tr: 'Tarih' },
+  },
 ] as const;
 
 export type Subject = (typeof subjects)[number];

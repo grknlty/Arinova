@@ -28,6 +28,7 @@ import {
   Rocket,
   Telescope,
   TrafficCone,
+  Landmark,
 } from 'lucide-react';
 import { words, type Language } from '@/lib/i18n';
 import { sample } from '@/lib/sample';
@@ -60,16 +61,17 @@ const feelings = ['sure', 'unsure', 'best_guess', 'not_understood'] as const;
 const feelingIcons = [Sun, CloudSun, Shuffle, CircleHelp];
 // Where each subject planet sits around the supernova: orbit radius (px)
 // and angle (degrees, clockwise from the right). All planets turn together,
-// so these gaps never change; the angles were chosen so no planet or label
-// ever overlaps another at desktop or phone size. Angles between 0 and 180
-// are nearer to us and drawn larger.
+// so these gaps never change; the angles were chosen by sweeping a full turn
+// so no planet or label overlaps another at phone, tablet or desktop size.
+// Angles between 0 and 180 are nearer to us and drawn larger.
 const orbits = {
-  taal: [162, 0],
-  rekenen: [186, 220],
-  huiswerk: [80, 284],
-  topografie: [108, 158],
-  aardrijkskunde: [136, 70],
-  verkeer: [176, 290],
+  taal: [108, 42],
+  rekenen: [186, 90],
+  huiswerk: [136, 143],
+  topografie: [162, 203],
+  aardrijkskunde: [196, 253],
+  verkeer: [80, 295],
+  geschiedenis: [176, 346],
 } as const;
 const subjectIcons = {
   taal: BookOpen,
@@ -78,6 +80,7 @@ const subjectIcons = {
   topografie: MapPinned,
   aardrijkskunde: Earth,
   verkeer: TrafficCone,
+  geschiedenis: Landmark,
 };
 type Draft = {
   title?: string;

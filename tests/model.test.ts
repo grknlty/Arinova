@@ -65,5 +65,7 @@ test('import maps subject shorthands to the fixed school subjects', () => {
   assert.equal(subjectOf(' REKENEN '), 'Rekenen');
   assert.equal(subjectOf('ardkunde'), 'Aardrijkskunde');
   assert.equal(subjectOf('Huiswerk'), 'Huiswerk');
+  assert.equal(subjectOf('History'), 'Geschiedenis');
+  assert.equal(subjectOf('tarih'), 'Geschiedenis');
   assert.equal(subjectOf('Muziek'), 'Muziek');
 });

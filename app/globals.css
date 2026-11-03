@@ -325,6 +325,16 @@ svg {
   height: calc(340px * var(--spread));
   flex-shrink: 0;
 }
+/* On narrow screens the orbits are taller than wide rather than tilted:
+   there is not enough width to keep seven tilted planets and their names
+   apart, but there is height. */
+@media (max-width: 759px) {
+  .system {
+    --wide: 1;
+    --flat: 1.3;
+    height: 600px;
+  }
+}
 /* Grow the system to fill larger screens. */
 @media (min-width: 760px) {
   .system {
@@ -898,6 +908,11 @@ svg {
   --planet: #f97316;
   --planet-light: #fed7aa;
   --planet-dark: #c2410c;
+}
+.art-geschiedenis {
+  --planet: #8b5cf6;
+  --planet-light: #ddd6fe;
+  --planet-dark: #6d28d9;
 }
 .planet {
   position: relative;
@@ -2202,13 +2217,8 @@ textarea {
   }
   /* The whole system shrinks to fit; planets and names grow inside it so
      they stay at least 44px and 12px on screen. */
-  /* On phones the orbits are round rather than tilted: there is not
-     enough width to keep tilted planets and their names apart. */
   .system {
-    --wide: 1;
-    --flat: 1;
     --depth-range: 0.08;
-    height: 470px;
     zoom: 0.66;
   }
   /* Even the farthest planet stays at least 44px on screen. */

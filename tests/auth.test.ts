@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sameOrigin, equal, token, demo } from '../lib/auth';
+import { sameOrigin, equal, token, demo, canImport } from '../lib/auth';
 test('origin protection tolerates normalized URLs but rejects other sites', () => {
   assert.equal(
     sameOrigin(
@@ -50,5 +50,31 @@ test('Vercel never enables the local demo', () => {
   } finally {
     if (previous === undefined) delete process.env.VERCEL;
     else process.env.VERCEL = previous;
+  }
+});
+test('the import token works from another origin; cookies need the same origin', async () => {
+  const saved = process.env.IMPORT_API_TOKEN;
+  process.env.IMPORT_API_TOKEN = 'test-import-token-that-is-long-enough-123';
+  const request = (authorization?: string) =>
+    new Request('https://arinova.example/api/sets', {
+      method: 'POST',
+      headers: {
+        host: 'arinova.example',
+        origin: 'https://chatgpt.com',
+        ...(authorization ? { authorization } : {}),
+      },
+    });
+  try {
+    assert.equal(
+      await canImport(
+        request('Bearer test-import-token-that-is-long-enough-123'),
+      ),
+      true,
+    );
+    assert.equal(await canImport(request('Bearer wrong')), false);
+    assert.equal(await canImport(request()), false);
+  } finally {
+    if (saved === undefined) delete process.env.IMPORT_API_TOKEN;
+    else process.env.IMPORT_API_TOKEN = saved;
   }
 });
