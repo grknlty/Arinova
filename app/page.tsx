@@ -38,6 +38,7 @@ import {
   subjectLabel,
 } from '@/lib/subjects';
 import type { StudySet, PublicSet, Answer, Attempt } from '@/lib/model';
+import { normalizeSets } from '@/lib/formats';
 import {
   ArinAstronaut,
   GalaxyCanvas,
@@ -85,6 +86,8 @@ type Draft = {
   questions?: unknown[];
 };
 const partSizes = [5, 10, 20];
+const pictures = (d: Draft) =>
+  (d.questions ?? []).filter((q) => (q as { image?: string })?.image).length;
 // Splits a set into parts of about `size` questions, sized evenly
 // (42 by 10 gives 9+9+8+8+8), each titled "… (deel 2/5)".
 function split<T extends Draft>(set: T, size: number): T[] {
@@ -405,6 +408,8 @@ export default function Home() {
   );
   const allAnswers = attempts.flatMap((a) => a.answers);
   // Questions answered wrong at least once, most often wrong first.
+  const imageOf = (setId: string, question: number) =>
+    sets.find((s) => s.id === setId)?.questions[question]?.image;
   const missed = Object.values(
     [...attempts]
       .reverse()
@@ -413,6 +418,7 @@ export default function Home() {
           ...x,
           key: `${a.setId}:${i}`,
           title: a.title,
+          image: imageOf(a.setId, i),
         })),
       )
       .reduce<
@@ -421,6 +427,7 @@ export default function Home() {
           {
             prompt: string;
             title: string;
+            image?: string;
             correctAnswer: string;
             wrong: number;
             total: number;
@@ -431,6 +438,7 @@ export default function Home() {
         const m = (all[x.key] ??= {
           prompt: x.prompt,
           title: x.title,
+          image: x.image,
           correctAnswer: x.correctAnswer,
           wrong: 0,
           total: 0,
@@ -449,7 +457,9 @@ export default function Home() {
     .slice(0, 15);
   const drafts: Draft[] = (() => {
     try {
-      return [JSON.parse(json)].flat().filter((p) => p?.title);
+      return [normalizeSets(JSON.parse(json))]
+        .flat()
+        .filter((p): p is Draft => !!(p as Draft)?.title);
     } catch {
       return [];
     }
@@ -781,6 +791,13 @@ export default function Home() {
                 {subjectLabel(selected.subject, lang)}
               </span>
               <h1>{selected.questions[index].prompt}</h1>
+              {selected.questions[index].image && (
+                <img
+                  className="question-image"
+                  src={selected.questions[index].image}
+                  alt={t.questionImage}
+                />
+              )}
               <div className="options">
                 {selected.questions[index].options.map((o, i) => (
                   <button
@@ -790,6 +807,13 @@ export default function Home() {
                     onClick={() => updateAnswer({ option: i })}
                   >
                     <span className="option-letter">{'ABCDEF'[i]}</span>
+                    {selected.questions[index].optionImages?.[i] && (
+                      <img
+                        className="option-image"
+                        src={selected.questions[index].optionImages![i]!}
+                        alt=""
+                      />
+                    )}
                     {o}
                     {answers[index].option === i && <Check size={20} />}
                   </button>
@@ -881,7 +905,11 @@ export default function Home() {
                 <ArrowRight size={18} />
               </button>
             </section>
-            <Review attempt={result} lang={lang} />
+            <Review
+              attempt={result}
+              lang={lang}
+              images={selected?.questions.map((q) => q.image)}
+            />
           </>
         )}
         {view === 'progress' && (
@@ -957,6 +985,13 @@ export default function Home() {
                       <span className="confidence-label">{m.title}</span>
                     </div>
                     <h3>{m.prompt}</h3>
+                    {m.image && (
+                      <img
+                        className="question-image"
+                        src={m.image}
+                        alt={t.questionImage}
+                      />
+                    )}
                     <p>
                       {t.lastWrong}: <strong>{m.last ?? t.skipped}</strong>
                     </p>
@@ -991,7 +1026,11 @@ export default function Home() {
                       {a.correct}/{a.total}
                     </span>
                   </summary>
-                  <Review attempt={a} lang={lang} />
+                  <Review
+                    attempt={a}
+                    lang={lang}
+                    images={a.answers.map((_, i) => imageOf(a.setId, i))}
+                  />
                 </details>
               ))
             ) : (
@@ -1027,7 +1066,7 @@ export default function Home() {
                       setError('');
                       setSaved(false);
                       if (!/\.docx$/i.test(file.name)) {
-                        if (file.size > 500000) setError(t.importError);
+                        if (file.size > 4000000) setError(t.importError);
                         else setJson(await file.text());
                         return;
                       }
@@ -1109,6 +1148,11 @@ export default function Home() {
                         <span>
                           {p.questions?.length ?? 0} {t.questions}
                         </span>
+                        {pictures(p) > 0 && (
+                          <span>
+                            {pictures(p)} {t.pictures}
+                          </span>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -1136,10 +1180,23 @@ export default function Home() {
                   setError('');
                   setSaved(false);
                   try {
-                    await api(
-                      '/api/sets',
-                      preview.length === 1 ? preview[0] : preview,
-                    );
+                    const r = await fetch('/api/sets', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(
+                        preview.length === 1 ? preview[0] : preview,
+                      ),
+                    });
+                    // The server names what is wrong, e.g. which question.
+                    const payload = await r.json().catch(() => null);
+                    if (!r.ok) {
+                      setError(
+                        [t.importError, payload?.error]
+                          .filter(Boolean)
+                          .join(' '),
+                      );
+                      return;
+                    }
                     setJson('');
                     await load();
                     setSaved(true);
@@ -1191,7 +1248,15 @@ export default function Home() {
     </div>
   );
 }
-function Review({ attempt, lang }: { attempt: Attempt; lang: Language }) {
+function Review({
+  attempt,
+  lang,
+  images = [],
+}: {
+  attempt: Attempt;
+  lang: Language;
+  images?: (string | undefined)[];
+}) {
   const t = words[lang];
   return (
     <div className="review">
@@ -1214,6 +1279,13 @@ function Review({ attempt, lang }: { attempt: Attempt; lang: Language }) {
           <h3>
             {i + 1}. {a.prompt}
           </h3>
+          {images[i] && (
+            <img
+              className="question-image"
+              src={images[i]}
+              alt={t.questionImage}
+            />
+          )}
           <p>
             {t.yourAnswer}: <strong>{a.selected ?? t.skipped}</strong>
           </p>

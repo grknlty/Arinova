@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { database } from '../lib/database';
-import { addAttempt, addSets, list } from '../lib/store';
+import { addAttempt, addSets, image, list } from '../lib/store';
 import { tables } from '../lib/records';
 import { allowLogin } from '../lib/rate-limit';
 import { grade } from '../lib/model';
@@ -84,6 +84,38 @@ test(
           assert.ok((await list('sets')).some((s) => s.id === sample.id));
         },
       );
+      await t.test('stores pictures and lists them as URLs', async () => {
+        const png = 'data:image/png;base64,iVBORw0KGgo=';
+        const { sample: _, ...content } = sample;
+        void _;
+        const set = {
+          ...content,
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          questions: content.questions.map((q, i) =>
+            i === 0
+              ? {
+                  ...q,
+                  image: png,
+                  optionImages: q.options.map((_, j) => (j === 1 ? png : null)),
+                }
+              : q,
+          ),
+        };
+        await addSets([set]);
+        const stored = (await list('sets')).find((s) => s.id === set.id)!;
+        assert.equal(stored.questions[0].image, `/api/images/${set.id}/0`);
+        assert.deepEqual(stored.questions[0].optionImages, [
+          null,
+          `/api/images/${set.id}/0/1`,
+          null,
+          null,
+        ]);
+        assert.equal('image' in stored.questions[1], false);
+        assert.equal(await image(set.id, 0), png);
+        assert.equal(await image(set.id, 0, 1), png);
+        assert.equal(await image(set.id, 0, 0), null);
+      });
       await t.test(
         'login limiting persists and enforces its limit in PostgreSQL',
         async () => {

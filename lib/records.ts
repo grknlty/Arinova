@@ -74,6 +74,9 @@ export const schema = `
     answered_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (attempt_id, question_id)
   );
+  -- Optional pictures as data URLs; added after the first release.
+  ALTER TABLE public.arinova_questions ADD COLUMN IF NOT EXISTS image text;
+  ALTER TABLE public.arinova_options ADD COLUMN IF NOT EXISTS image text;
   CREATE INDEX IF NOT EXISTS arinova_answers_question
     ON public.arinova_user_question_answers (question_id, is_correct);
   CREATE INDEX IF NOT EXISTS arinova_attempts_user
@@ -134,9 +137,9 @@ export async function insertSet(client: Client, set: StudySet) {
   if (!test.rowCount) return;
   const questions = await client.query(
     `INSERT INTO public.arinova_questions
-       (subject_id, test_id, position, question_text, explanation, answer_count)
-     SELECT $1, $2, q.position, q.text, q.explanation, 1
-     FROM jsonb_to_recordset($3) AS q(position integer, text text, explanation text)
+       (subject_id, test_id, position, question_text, explanation, answer_count, image)
+     SELECT $1, $2, q.position, q.text, q.explanation, 1, q.image
+     FROM jsonb_to_recordset($3) AS q(position integer, text text, explanation text, image text)
      RETURNING id, position`,
     [
       subjectId,
@@ -146,15 +149,16 @@ export async function insertSet(client: Client, set: StudySet) {
           position,
           text: q.prompt,
           explanation: q.explanation,
+          image: q.image ?? null,
         })),
       ),
     ],
   );
   const ids = new Map(questions.rows.map((r) => [r.position, r.id]));
   await client.query(
-    `INSERT INTO public.arinova_options (question_id, position, option_text, is_answer)
-     SELECT o.question_id, o.position, o.text, o.is_answer
-     FROM jsonb_to_recordset($1) AS o(question_id uuid, position integer, text text, is_answer boolean)`,
+    `INSERT INTO public.arinova_options (question_id, position, option_text, is_answer, image)
+     SELECT o.question_id, o.position, o.text, o.is_answer, o.image
+     FROM jsonb_to_recordset($1) AS o(question_id uuid, position integer, text text, is_answer boolean, image text)`,
     [
       JSON.stringify(
         set.questions.flatMap((q, i) =>
@@ -163,6 +167,7 @@ export async function insertSet(client: Client, set: StudySet) {
             position,
             text,
             is_answer: position === q.correctIndex,
+            image: q.optionImages?.[position] ?? null,
           })),
         ),
       ),
@@ -222,15 +227,24 @@ export async function readSets(client: Client): Promise<StudySet[]> {
     SELECT t.id, t.title, s.subject_name AS subject, t.language, t.description,
       t.material, t.is_sample, t.created_at,
       COALESCE((
-        SELECT jsonb_agg(jsonb_build_object(
+        -- Pictures are listed as the URLs that serve them, not their data.
+        SELECT jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
           'prompt', q.question_text,
           'explanation', q.explanation,
           'options', (SELECT jsonb_agg(o.option_text ORDER BY o.position)
                       FROM public.arinova_options o WHERE o.question_id = q.id),
           'correctIndex', (SELECT min(o.position)
                            FROM public.arinova_options o
-                           WHERE o.question_id = q.id AND o.is_answer)
-        ) ORDER BY q.position)
+                           WHERE o.question_id = q.id AND o.is_answer),
+          'image', CASE WHEN q.image IS NOT NULL
+                   THEN '/api/images/' || t.id || '/' || q.position END,
+          'optionImages', (
+            SELECT CASE WHEN bool_or(o.image IS NOT NULL) THEN jsonb_agg(
+              CASE WHEN o.image IS NOT NULL
+              THEN '/api/images/' || t.id || '/' || q.position || '/' || o.position
+              END ORDER BY o.position) END
+            FROM public.arinova_options o WHERE o.question_id = q.id)
+        )) ORDER BY q.position)
         FROM public.arinova_questions q WHERE q.test_id = t.id
       ), '[]') AS questions
     FROM public.arinova_tests t
@@ -286,4 +300,25 @@ export async function readAttempts(client: Client): Promise<Attempt[]> {
     correct: r.correct,
     total: r.total,
   }));
+}
+
+export async function readImage(
+  client: Client,
+  setId: string,
+  question: number,
+  option?: number,
+): Promise<string | null> {
+  const result =
+    option === undefined
+      ? await client.query(
+          'SELECT image FROM public.arinova_questions WHERE test_id = $1 AND position = $2',
+          [setId, question],
+        )
+      : await client.query(
+          `SELECT o.image FROM public.arinova_options o
+           JOIN public.arinova_questions q ON q.id = o.question_id
+           WHERE q.test_id = $1 AND q.position = $2 AND o.position = $3`,
+          [setId, question, option],
+        );
+  return result.rows[0]?.image ?? null;
 }

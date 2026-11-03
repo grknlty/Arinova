@@ -1221,6 +1221,29 @@ footer[hidden] {
     0 4px 0 var(--primary),
     0 0 0 4px rgba(91, 46, 224, 0.15);
 }
+.question-image {
+  display: block;
+  width: 100%;
+  max-width: 600px;
+  max-height: 340px;
+  object-fit: contain;
+  margin: 0 0 24px;
+  border-radius: 16px;
+  border: 2px solid var(--line);
+  background: #fff;
+}
+.review-card .question-image {
+  max-width: 360px;
+  margin: 8px 0 12px;
+}
+.option-image {
+  width: 96px;
+  height: 72px;
+  flex: none;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #fff;
+}
 .options button svg {
   margin-left: auto;
   color: var(--primary);

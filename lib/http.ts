@@ -15,8 +15,8 @@ export async function bytes(request: Request, limit = 500000) {
   }
   return Buffer.concat(chunks);
 }
-export async function body(request: Request) {
-  return JSON.parse((await bytes(request)).toString('utf8'));
+export async function body(request: Request, limit?: number) {
+  return JSON.parse((await bytes(request, limit)).toString('utf8'));
 }
 export const unavailable = () =>
   Response.json(

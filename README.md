@@ -48,8 +48,8 @@ With PostgreSQL, content and answers are stored relationally:
 | `arinova_subjects`              | `id`, `subject_name`, `group_id`                                                                                          |
 | `arinova_users`                 | `id`, `name`, `user_name`, `role` (`parent`/`learner`), `group_id`                                                        |
 | `arinova_tests`                 | `id`, `subject_id`, `title`, `description`, `material`, `language`, `is_sample`, `created_at`                             |
-| `arinova_questions`             | `id`, `subject_id`, `test_id`, `position`, `question_text`, `explanation`, `answer_count`                                 |
-| `arinova_options`               | `id`, `question_id`, `position`, `option_text`, `is_answer`                                                               |
+| `arinova_questions`             | `id`, `subject_id`, `test_id`, `position`, `question_text`, `explanation`, `answer_count`, `image`                        |
+| `arinova_options`               | `id`, `question_id`, `position`, `option_text`, `is_answer`, `image`                                                      |
 | `arinova_attempts`              | `id`, `user_id`, `test_id`, `correct`, `total`, `created_at`                                                              |
 | `arinova_user_question_answers` | `id`, `attempt_id`, `user_id`, `question_id`, `options_id` (null when skipped), `is_correct`, `confidence`, `answered_at` |
 
@@ -73,7 +73,13 @@ In the parent’s **Add material** tab, upload a Word test (.docx), download the
 
 A Word file can hold one or more tests. Each test has a title (Title or Heading style), numbered questions (`1. …`) with options on their own lines (`A. …` to `F. …`), and an answer key under a heading starting with **Antwoorden** (or Answers/Cevaplar) with lines like `1. B  Optional explanation`. A question can instead give its answer on a line `Antwoord: B`. Questions may sit in table cells. The subject is taken from the title (for example _Verkeer toets 1_). The file is read on the server (max 4 MB) and shown for checking; nothing is saved until the parent presses save. Before saving, a long test can be split into practices of about 5, 10 or 20 questions, titled “… (deel 2/4)”. Questions without an answer are reported by number.
 
-### JSON A set contains a study text and 1–100 questions. Every question has 2–6 options, a zero-based correctIndex, and an optional explanation. The interface accepts up to 500 KB per upload.
+### Generated JSON with pictures
+
+Files in the generated “toets” layout are read as well: `{ subject, title, toetsname, language, lessons, questions: [{ question, image, options: [{ option1, isExpectedAnswer: "yes" | "no", explanationIfExpected, image }] }] }`, or several under `{ "tests": [ … ] }`. Each question needs exactly one expected answer. An `image` is `{ "mimeType": "image/png", "encoding": "base64", "data": "…" }` or a data URL; PNG, JPEG, WebP and GIF are accepted (no SVG), up to about 1 MB each and 4 MB per upload. Pictures are stored in the database and served from `/api/images/{set}/{question}[/{option}]` to signed-in users only. If a file is rejected, the page names the question and the problem.
+
+### JSON
+
+A set contains a study text and 1–100 questions. Every question has 2–6 options, a zero-based correctIndex, an optional explanation, and optionally an `image` (data URL) and `optionImages` (one data URL or null per option). The interface accepts up to 4 MB per upload.
 
 ```json
 {
@@ -117,6 +123,6 @@ While practising, Arin can tick “I don’t understand the question” (which a
 
 ## Current scope and next steps
 
-This is a first working version. Screenshots/PDFs from school can be shared in chat to prepare reviewed study-set JSON, then imported. Existing ChatGPT projects cannot be read automatically from this repository. Word tests with images, direct photo/PDF storage, automatic OCR/question generation, free-text answers, multiple learner profiles, content editing/deletion, and spaced repetition are future work. Do not treat the sample as age- or curriculum-specific school material.
+This is a first working version. Screenshots/PDFs from school can be shared in chat to prepare reviewed study-set JSON, then imported. Existing ChatGPT projects cannot be read automatically from this repository. Pictures inside Word tests, direct photo/PDF storage, automatic OCR/question generation, free-text answers, multiple learner profiles, content editing/deletion, and spaced repetition are future work. Do not treat the sample as age- or curriculum-specific school material.
 
 A database backup/export policy should be configured with the database provider before retaining important learning history. Production deployment and a real cross-device check require a Vercel project and database credentials; a local build does not establish those capabilities.

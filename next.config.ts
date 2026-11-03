@@ -15,8 +15,9 @@ const config: NextConfig = {
           },
         ],
       },
+      // Pictures set their own private, long-lived caching.
       {
-        source: '/api/:path*',
+        source: '/api/:path((?!images/).*)',
         headers: [{ key: 'Cache-Control', value: 'private, no-store' }],
       },
     ];

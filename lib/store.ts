@@ -5,7 +5,13 @@ import path from 'node:path';
 import type { StudySet, Attempt } from './model';
 import type { Role } from './auth';
 import { sample } from './sample';
-import { insertAttempt, insertSet, readAttempts, readSets } from './records';
+import {
+  insertAttempt,
+  insertSet,
+  readAttempts,
+  readImage,
+  readSets,
+} from './records';
 type Data = { sets: StudySet[]; attempts: Attempt[] };
 const globalStore = globalThis as unknown as {
   arinovaQueue?: Promise<unknown>;
@@ -77,4 +83,13 @@ async function writeLocal(change: (data: Data) => void) {
   const pending = (globalStore.arinovaQueue ?? Promise.resolve()).then(write);
   globalStore.arinovaQueue = pending.catch(() => {});
   await pending;
+}
+// A picture's data URL, by set, question and (for option pictures) option.
+export async function image(setId: string, question: number, option?: number) {
+  const db = await database();
+  if (db) return readImage(db, setId, question, option);
+  const q = (await local()).sets.find((s) => s.id === setId)?.questions[
+    question
+  ];
+  return (option === undefined ? q?.image : q?.optionImages?.[option]) ?? null;
 }

@@ -6,6 +6,12 @@ export const confidence = z.enum([
   'best_guess',
   'not_understood',
 ]);
+// Pictures arrive as base64 data URLs (no SVG, which can carry scripts) and
+// are served to the browser from /api/images, never inlined in set lists.
+export const imageData = z
+  .string()
+  .max(1500000)
+  .regex(/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/);
 export const setSchema = z.object({
   title: z.string().trim().min(1).max(150),
   subject: z.string().trim().min(1).max(80).transform(canonicalSubject),
@@ -20,10 +26,16 @@ export const setSchema = z.object({
           options: z.array(z.string().trim().min(1).max(1000)).min(2).max(6),
           correctIndex: z.number().int().min(0),
           explanation: z.string().max(5000).default(''),
+          image: imageData.optional(),
+          optionImages: z.array(imageData.nullable()).optional(),
         })
         .refine(
           (q) => q.correctIndex < q.options.length,
           'correctIndex must refer to an option',
+        )
+        .refine(
+          (q) => !q.optionImages || q.optionImages.length === q.options.length,
+          'optionImages needs one entry (or null) per option',
         ),
     )
     .min(1)
@@ -35,7 +47,12 @@ export type StudySet = z.infer<typeof setSchema> & {
   sample?: boolean;
 };
 export type PublicSet = Omit<StudySet, 'questions'> & {
-  questions: { prompt: string; options: string[] }[];
+  questions: {
+    prompt: string;
+    options: string[];
+    image?: string;
+    optionImages?: (string | null)[];
+  }[];
 };
 export const answerSchema = z.object({
   option: z.number().int().min(0).nullable(),
@@ -102,6 +119,55 @@ export function publicSet(set: StudySet): PublicSet {
     questions: set.questions.map((q) => ({
       prompt: q.prompt,
       options: q.options,
+      ...(q.image ? { image: q.image } : {}),
+      ...(q.optionImages ? { optionImages: q.optionImages } : {}),
     })),
   };
+}
+
+// Replaces stored picture data with the URLs that serve it.
+export function imageUrls(set: StudySet): StudySet {
+  const url = (data: string | null | undefined, path: string) =>
+    data?.startsWith('data:') ? `/api/images/${set.id}/${path}` : data;
+  return {
+    ...set,
+    questions: set.questions.map((q, i) => ({
+      ...q,
+      ...(q.image ? { image: url(q.image, `${i}`)! } : {}),
+      ...(q.optionImages
+        ? {
+            optionImages: q.optionImages.map(
+              (o, j) => url(o, `${i}/${j}`) ?? null,
+            ),
+          }
+        : {}),
+    })),
+  };
+}
+
+// Readable reasons for a rejected import, e.g. "Test 2, question 5: …".
+export function importProblems(error: z.ZodError) {
+  return error.issues
+    .slice(0, 6)
+    .map(({ path, message }) => {
+      const at = path.indexOf('questions');
+      const where = [
+        typeof path[0] === 'number' ? `Test ${path[0] + 1}` : '',
+        at >= 0 && typeof path[at + 1] === 'number'
+          ? `question ${(path[at + 1] as number) + 1}`
+          : '',
+      ]
+        .filter(Boolean)
+        .join(', ');
+      const field = path.at(-1) === undefined ? '' : String(path.at(-1));
+      const reason =
+        field === 'correctIndex'
+          ? 'needs exactly one correct answer'
+          : /image|optionImages/.test(path.join('.'))
+            ? 'pictures must be PNG, JPEG, WebP or GIF data'
+            : `${field || 'file'}: ${message}`;
+      const line = where ? `${where}: ${reason}` : reason;
+      return line[0].toUpperCase() + line.slice(1);
+    })
+    .join('; ');
 }
