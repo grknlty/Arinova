@@ -191,7 +191,17 @@ try {
   await page.getByRole('button', { name: 'See my results' }).click();
   await page.getByRole('heading', { name: 'Well practised!' }).waitFor();
   await page.getByText('Correct, but still unsure', { exact: true }).waitFor();
-  await page.getByText('Not answered', { exact: true }).waitFor();
+  const review = page.locator('.review');
+  await review.getByText('Not answered', { exact: true }).waitFor();
+  // The result filters narrow the answer list; the chart sums the score.
+  await page.getByRole('img', { name: /Correct: 1/ }).waitFor();
+  await page.getByRole('radio', { name: /Not sure/ }).check();
+  assert.equal(await review.locator('.review-card').count(), 1);
+  await page.getByRole('radio', { name: /Didn’t understand/ }).check();
+  await review.getByText('Not answered', { exact: true }).waitFor();
+  await page.getByRole('radio', { name: /^Incorrect/ }).check();
+  await review.getByText('No questions in this group.').waitFor();
+  await page.getByRole('radio', { name: /^All/ }).check();
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await page.getByRole('button', { name: 'Parent', exact: true }).click();
   await page
@@ -207,6 +217,13 @@ try {
   assert.equal(attempts[0].answers[1].selected, null);
   await page.locator('summary').click();
   await page.getByText('Correct, but still unsure', { exact: true }).waitFor();
+  // The parent can open a set from the history to see its answers.
+  await page.getByRole('button', { name: 'Add material', exact: true }).click();
+  await page.getByRole('button', { name: /Browser workflow test/ }).click();
+  const viewer = page.getByRole('dialog', { name: 'Browser workflow test' });
+  await viewer.getByText('Question 1', { exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+  await viewer.waitFor({ state: 'detached' });
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(
     await page.evaluate(

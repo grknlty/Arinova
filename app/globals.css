@@ -757,11 +757,13 @@ svg {
   }
 }
 /* Piso flies her alien saucer the opposite way to Mia, below the planets. */
+/* Flies at the rocket's height, the other way; one layer behind it, so
+   when they cross the saucer passes behind the rocket. */
 .piso-ship {
   position: absolute;
-  bottom: 1%;
+  top: 1%;
   left: 0;
-  z-index: 2;
+  z-index: 1;
   width: clamp(130px, 17vw, 230px);
   pointer-events: none;
   animation: piso-fly 32s linear infinite;
@@ -1427,6 +1429,115 @@ footer[hidden] {
 .score span {
   font-size: 32px;
 }
+/* Result overview: score donut, legend and answer filters. */
+.result-summary {
+  max-width: 850px;
+  margin: 0 auto 24px;
+}
+.result-chart {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+}
+.result-chart svg {
+  width: 160px;
+  height: 160px;
+  flex: none;
+}
+.result-chart circle {
+  transition: opacity 0.2s var(--ease);
+}
+@media (hover: hover) {
+  .result-chart svg:hover circle:not(:hover) {
+    opacity: 0.45;
+  }
+}
+.donut-value {
+  font-family: var(--font-heading), system-ui, sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  fill: var(--ink);
+}
+.donut-label {
+  font-size: 13px;
+  font-weight: 600;
+  fill: var(--muted);
+}
+.result-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  min-width: 200px;
+}
+.result-legend li {
+  display: grid;
+  grid-template-columns: 14px 1fr auto 3.2em;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+}
+.result-legend .swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+.result-legend small {
+  color: var(--muted);
+  text-align: right;
+}
+.result-filters {
+  border: 0;
+  margin: 24px 0 0;
+  padding: 18px 0 0;
+  border-top: 2px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.result-filters legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+.result-filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+.result-filters input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+.result-filters label:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--soft);
+}
+.result-filters label:has(input:focus-visible) {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+.result-filters .count {
+  min-width: 24px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
 .review {
   display: grid;
   gap: 16px;
@@ -1746,11 +1857,134 @@ footer[hidden] {
   border-radius: 16px;
   background: #fff;
 }
-.history-list li > div {
+.history-open {
   display: grid;
   gap: 4px;
   min-width: 0;
   flex: 1 1 260px;
+  padding: 4px;
+  margin: -4px;
+  border-radius: 12px;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.history-open:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+.history-list li .history-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary);
+  font-weight: 700;
+}
+@media (hover: hover) {
+  .history-open:hover strong {
+    color: var(--primary);
+  }
+}
+/* A set opened from the history. */
+.set-viewer {
+  width: min(860px, calc(100% - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 30px 80px -20px rgba(20, 12, 60, 0.6);
+}
+.set-viewer::backdrop {
+  background: rgba(14, 8, 52, 0.55);
+}
+.set-viewer-inner {
+  padding: 0 24px 24px;
+}
+.set-viewer header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0 12px;
+  background: var(--card);
+}
+.set-viewer h2 {
+  margin: 4px 0 0;
+  font-size: 24px;
+}
+.close-button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+}
+.set-viewer-material summary {
+  cursor: pointer;
+  font-weight: 700;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.set-viewer-questions {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+.set-viewer-questions > li {
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+}
+.set-viewer-questions h3 {
+  margin: 8px 0 12px;
+  font-size: 18px;
+}
+.set-viewer-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.set-viewer-options li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--soft);
+}
+.set-viewer-options li.right {
+  background: var(--good-bg);
+  color: var(--good);
+  font-weight: 700;
+}
+.set-viewer-options li svg {
+  margin-left: auto;
+  flex: none;
+}
+@media (max-width: 580px) {
+  .set-viewer-inner {
+    padding: 0 16px 16px;
+  }
+  .set-viewer h2 {
+    font-size: 20px;
+  }
 }
 .history-list li span {
   color: var(--muted);

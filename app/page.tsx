@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
   ArrowRight,
@@ -31,6 +31,7 @@ import {
   Landmark,
   Trash2,
   RotateCcw,
+  X,
 } from 'lucide-react';
 import { words, type Language } from '@/lib/i18n';
 import { sample } from '@/lib/sample';
@@ -57,6 +58,19 @@ type Progress = {
   answers: Answer[];
   doubts: Record<number, { unsure?: boolean; notUnderstood?: boolean }>;
   index: number;
+};
+// Which answers the result page lists; "unsure" includes the older
+// "best guess" answers.
+type ResultFilter = 'all' | 'wrong' | 'correct' | 'unsure' | 'not_understood';
+const resultFilters: Record<
+  ResultFilter,
+  (a: Attempt['answers'][number]) => boolean
+> = {
+  all: () => true,
+  wrong: (a) => a.option !== null && !a.correct,
+  correct: (a) => a.correct,
+  unsure: (a) => a.confidence === 'unsure' || a.confidence === 'best_guess',
+  not_understood: (a) => a.confidence === 'not_understood',
 };
 type View =
   'library' | 'subject' | 'progress' | 'manage' | 'study' | 'quiz' | 'result';
@@ -165,6 +179,9 @@ export default function Home() {
   const [loginRole, setLoginRole] = useState('learner');
   const [json, setJson] = useState('');
   const [partSize, setPartSize] = useState(0);
+  const [resultFilter, setResultFilter] = useState<ResultFilter>('all');
+  // The set opened from the history, shown in a window with its answers.
+  const [viewing, setViewing] = useState<StudySet | null>(null);
   // Where the material in the box came from, kept with the saved sets.
   const [origin, setOrigin] = useState<{
     source: 'word' | 'json';
@@ -235,6 +252,7 @@ export default function Home() {
     );
     setDoubts(kept?.doubts ?? {});
     setIndex(kept?.index ?? 0);
+    setResultFilter('all');
     navigate('quiz');
   }
   // Optional checkboxes per question. Not understanding the question is the
@@ -935,10 +953,17 @@ export default function Home() {
                 <ArrowRight size={18} />
               </button>
             </section>
+            <ResultSummary
+              attempt={result}
+              lang={lang}
+              filter={resultFilter}
+              onFilter={setResultFilter}
+            />
             <Review
               attempt={result}
               lang={lang}
               images={selected?.questions.map((q) => q.image)}
+              show={resultFilters[resultFilter]}
             />
           </>
         )}
@@ -1280,7 +1305,12 @@ export default function Home() {
                           : t.sourceUnknown;
                   return (
                     <li key={s.id} className={s.deletedAt ? 'deleted' : ''}>
-                      <div>
+                      <button
+                        type="button"
+                        className="history-open"
+                        aria-haspopup="dialog"
+                        onClick={() => setViewing(s as StudySet)}
+                      >
                         <strong>{s.title}</strong>
                         <span>
                           {subjectLabel(s.subject, lang)} · {s.questions.length}{' '}
@@ -1295,7 +1325,11 @@ export default function Home() {
                             {t.deletedOn} {when(s.deletedAt)}
                           </span>
                         )}
-                      </div>
+                        <span className="history-view">
+                          <Eye size={16} aria-hidden="true" />
+                          {t.view}
+                        </span>
+                      </button>
                       <button
                         className="button secondary"
                         disabled={busy}
@@ -1313,6 +1347,14 @@ export default function Home() {
                 })}
               </ul>
             </section>
+            {viewing && (
+              <SetViewer
+                set={viewing}
+                attempts={attempts.filter((a) => a.setId === viewing.id)}
+                lang={lang}
+                onClose={() => setViewing(null)}
+              />
+            )}
             <FaceEditor
               faces={faces}
               t={t}
@@ -1342,6 +1384,108 @@ export default function Home() {
         <span>NL · TR · EN</span>
       </footer>
     </div>
+  );
+}
+// The parent's look at a whole set: every question with the right answer
+// marked, and how often Arin answered it wrong. Esc or the backdrop closes it.
+function SetViewer({
+  set,
+  attempts,
+  lang,
+  onClose,
+}: {
+  set: StudySet;
+  attempts: Attempt[];
+  lang: Language;
+  onClose: () => void;
+}) {
+  const t = words[lang];
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    dialog.current?.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="set-viewer"
+      aria-labelledby="set-viewer-title"
+      onClose={onClose}
+      onClick={(e) => e.target === dialog.current && dialog.current.close()}
+    >
+      <div className="set-viewer-inner">
+        <header>
+          <div>
+            <span className="eyebrow">{subjectLabel(set.subject, lang)}</span>
+            <h2 id="set-viewer-title">{set.title}</h2>
+          </div>
+          <button
+            type="button"
+            className="close-button"
+            aria-label={t.close}
+            onClick={() => dialog.current?.close()}
+          >
+            <X size={22} aria-hidden="true" />
+          </button>
+        </header>
+        {set.description && <p>{set.description}</p>}
+        <SetFacts set={set} lang={lang} />
+        {set.material.trim() && (
+          <details className="set-viewer-material">
+            <summary>{t.material}</summary>
+            <div className="material">{set.material}</div>
+          </details>
+        )}
+        <ol className="set-viewer-questions">
+          {set.questions.map((q, i) => {
+            const answers = attempts.map((a) => a.answers[i]).filter(Boolean);
+            const wrong = answers.filter((a) => !a.correct).length;
+            return (
+              <li key={i}>
+                <div className="review-heading">
+                  <strong>
+                    {t.question} {i + 1}
+                  </strong>
+                  {answers.length > 0 && (
+                    <span className={`pill ${wrong ? 'bad' : 'good'}`}>
+                      {wrong}/{answers.length} {t.wrong.toLowerCase()}
+                    </span>
+                  )}
+                </div>
+                <h3>{q.prompt}</h3>
+                {q.image && (
+                  <img
+                    className="question-image"
+                    src={q.image}
+                    alt={t.questionImage}
+                  />
+                )}
+                <ul className="set-viewer-options">
+                  {q.options.map((o, j) => (
+                    <li key={j} className={j === q.correctIndex ? 'right' : ''}>
+                      <span className="option-letter">{'ABCDEF'[j]}</span>
+                      {q.optionImages?.[j] && (
+                        <img
+                          className="option-image"
+                          src={q.optionImages[j]!}
+                          alt=""
+                        />
+                      )}
+                      <span>{o}</span>
+                      {j === q.correctIndex && (
+                        <Check size={18} aria-label={t.rightAnswer} />
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                {q.explanation && (
+                  <p className="explanation">{q.explanation}</p>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </dialog>
   );
 }
 // Facts about a set for its card. Older sets have no lesson or group
@@ -1382,58 +1526,188 @@ function SetFacts({
     </dl>
   );
 }
+// Donut of the score (correct, wrong, not answered) and radio filters for
+// the answer list. Colours were checked for colour-blind separation; the
+// legend names every segment with its count, so colour never stands alone.
+const donutColours = {
+  correct: '#1f6f43',
+  wrong: '#f2766a',
+  skipped: '#8f8aa8',
+};
+function ResultSummary({
+  attempt,
+  lang,
+  filter,
+  onFilter,
+}: {
+  attempt: Attempt;
+  lang: Language;
+  filter: ResultFilter;
+  onFilter: (f: ResultFilter) => void;
+}) {
+  const t = words[lang];
+  const total = attempt.answers.length;
+  const parts = [
+    {
+      key: 'correct',
+      label: t.correct,
+      n: attempt.answers.filter((a) => a.correct).length,
+    },
+    {
+      key: 'wrong',
+      label: t.wrong,
+      n: attempt.answers.filter(resultFilters.wrong).length,
+    },
+    {
+      key: 'skipped',
+      label: t.unanswered,
+      n: attempt.answers.filter((a) => a.option === null).length,
+    },
+  ] as const;
+  const r = 52;
+  const circumference = 2 * Math.PI * r;
+  const shown = parts.filter((p) => p.n);
+  // A 2px gap between segments, none when one segment fills the ring.
+  const gap = shown.length > 1 ? 2 : 0;
+  let at = 0;
+  const pct = (n: number) => Math.round((n / total) * 100);
+  const options: [ResultFilter, string][] = [
+    ['all', t.filterAll],
+    ['wrong', t.wrong],
+    ['correct', t.correct],
+    ['unsure', t.filterUnsure],
+    ['not_understood', t.filterNotUnderstood],
+  ];
+  return (
+    <section className="result-summary paper">
+      <div className="result-chart">
+        <svg
+          viewBox="0 0 140 140"
+          role="img"
+          aria-label={parts.map((p) => `${p.label}: ${p.n}`).join(', ')}
+        >
+          {shown.map((p) => {
+            const length = (p.n / total) * circumference;
+            const segment = (
+              <circle
+                key={p.key}
+                cx="70"
+                cy="70"
+                r={r}
+                fill="none"
+                stroke={donutColours[p.key]}
+                strokeWidth="20"
+                strokeDasharray={`${Math.max(length - gap, 0.1)} ${circumference}`}
+                strokeDashoffset={-at}
+                transform="rotate(-90 70 70)"
+              >
+                <title>{`${p.label}: ${p.n} (${pct(p.n)}%)`}</title>
+              </circle>
+            );
+            at += length;
+            return segment;
+          })}
+          <text x="70" y="68" textAnchor="middle" className="donut-value">
+            {pct(parts[0].n)}%
+          </text>
+          <text x="70" y="88" textAnchor="middle" className="donut-label">
+            {t.correct.toLowerCase()}
+          </text>
+        </svg>
+        <ul className="result-legend">
+          {parts.map((p) => (
+            <li key={p.key}>
+              <span
+                className="swatch"
+                style={{ background: donutColours[p.key] }}
+                aria-hidden="true"
+              />
+              <span>{p.label}</span>
+              <strong>{p.n}</strong>
+              <small>{pct(p.n)}%</small>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <fieldset className="result-filters">
+        <legend>{t.showAnswers}</legend>
+        {options.map(([value, label]) => (
+          <label key={value}>
+            <input
+              type="radio"
+              name="result-filter"
+              value={value}
+              checked={filter === value}
+              onChange={() => onFilter(value)}
+            />
+            {label}
+            <span className="count">
+              {attempt.answers.filter(resultFilters[value]).length}
+            </span>
+          </label>
+        ))}
+      </fieldset>
+    </section>
+  );
+}
 function Review({
   attempt,
   lang,
   images = [],
+  show = () => true,
 }: {
   attempt: Attempt;
   lang: Language;
   images?: (string | undefined)[];
+  show?: (a: Attempt['answers'][number]) => boolean;
 }) {
   const t = words[lang];
+  const visible = attempt.answers.filter(show).length;
   return (
     <div className="review">
-      {attempt.answers.map((a, i) => (
-        <article className="review-card" key={i}>
-          <div className="review-heading">
-            <span
-              className={`pill ${a.correct ? 'good' : a.option === null ? '' : 'bad'}`}
-            >
-              {a.correct
-                ? t.correct
-                : a.option === null
-                  ? t.unanswered
-                  : t.wrong}
-            </span>
-            {a.confidence !== 'sure' && (
-              <span className="confidence-label">{t[a.confidence]}</span>
+      {!visible && <p className="empty">{t.noneInFilter}</p>}
+      {attempt.answers.map((a, i) =>
+        !show(a) ? null : (
+          <article className="review-card" key={i}>
+            <div className="review-heading">
+              <span
+                className={`pill ${a.correct ? 'good' : a.option === null ? '' : 'bad'}`}
+              >
+                {a.correct
+                  ? t.correct
+                  : a.option === null
+                    ? t.unanswered
+                    : t.wrong}
+              </span>
+              {a.confidence !== 'sure' && (
+                <span className="confidence-label">{t[a.confidence]}</span>
+              )}
+            </div>
+            <h3>
+              {i + 1}. {a.prompt}
+            </h3>
+            {images[i] && (
+              <img
+                className="question-image"
+                src={images[i]}
+                alt={t.questionImage}
+              />
             )}
-          </div>
-          <h3>
-            {i + 1}. {a.prompt}
-          </h3>
-          {images[i] && (
-            <img
-              className="question-image"
-              src={images[i]}
-              alt={t.questionImage}
-            />
-          )}
-          <p>
-            {t.yourAnswer}: <strong>{a.selected ?? t.skipped}</strong>
-          </p>
-          {!a.correct && (
             <p>
-              {t.rightAnswer}: <strong>{a.correctAnswer}</strong>
+              {t.yourAnswer}: <strong>{a.selected ?? t.skipped}</strong>
             </p>
-          )}
-          {a.explanation && <p className="explanation">{a.explanation}</p>}
-          {a.correct && a.confidence !== 'sure' && (
-            <span className="review-note">{t.guessedCorrect}</span>
-          )}
-        </article>
-      ))}
+            {!a.correct && (
+              <p>
+                {t.rightAnswer}: <strong>{a.correctAnswer}</strong>
+              </p>
+            )}
+            {a.explanation && <p className="explanation">{a.explanation}</p>}
+            {a.correct && a.confidence !== 'sure' && (
+              <span className="review-note">{t.guessedCorrect}</span>
+            )}
+          </article>
+        ),
+      )}
     </div>
   );
 }
